@@ -15,6 +15,7 @@ import {
   unlinkOwnedDaemonPidFile
 } from './daemon-spawner'
 import type { SubprocessHandle } from './session'
+import { createDaemonProductIdentity } from './daemon-product-identity'
 
 type ManualTimer = {
   callback: () => void
@@ -437,7 +438,8 @@ describe('current daemon lifecycle retirement', () => {
         version: PROTOCOL_VERSION,
         token: readFileSync(tokenPath, 'utf8').trim(),
         clientId: 'startup-health-control',
-        role: 'control'
+        role: 'control',
+        daemonProductIdentity: createDaemonProductIdentity()
       })}\n`
     )
     const daemon = server as unknown as { clients: Map<string, unknown> }
@@ -458,7 +460,8 @@ describe('current daemon lifecycle retirement', () => {
         version: PROTOCOL_VERSION,
         token: readFileSync(tokenPath, 'utf8').trim(),
         clientId: 'startup-control-create',
-        role: 'control'
+        role: 'control',
+        daemonProductIdentity: createDaemonProductIdentity()
       })}\n`
     )
     const daemon = server as unknown as {
@@ -494,7 +497,8 @@ describe('current daemon lifecycle retirement', () => {
         version: PROTOCOL_VERSION,
         token: readFileSync(tokenPath, 'utf8').trim(),
         clientId: 'control-only-overlap',
-        role: 'control'
+        role: 'control',
+        daemonProductIdentity: createDaemonProductIdentity()
       })}\n`
     )
     const daemon = server as unknown as {
@@ -531,7 +535,8 @@ describe('current daemon lifecycle retirement', () => {
         version: PROTOCOL_VERSION,
         token: readFileSync(tokenPath, 'utf8').trim(),
         clientId,
-        role: 'control'
+        role: 'control',
+        daemonProductIdentity: createDaemonProductIdentity()
       })}\n`
     )
     const daemon = server as unknown as {

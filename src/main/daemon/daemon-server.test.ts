@@ -9,6 +9,7 @@ import { encodeNdjson } from './ndjson'
 import { PROTOCOL_VERSION, type DaemonRequest } from './types'
 import type { SubprocessHandle } from './session'
 import { getDaemonPidPath, getDaemonSocketPath, serializeDaemonPidFile } from './daemon-spawner'
+import { createDaemonProductIdentity } from './daemon-product-identity'
 
 const confirmForegroundProcessMock = vi.fn(async () => 'droid')
 
@@ -112,7 +113,8 @@ describe('DaemonServer', () => {
         version: PROTOCOL_VERSION,
         token: readFileSync(tokenPath, 'utf-8').trim(),
         clientId,
-        role
+        role,
+        daemonProductIdentity: createDaemonProductIdentity()
       })
     )
     await new Promise<void>((resolve, reject) => {

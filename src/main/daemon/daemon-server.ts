@@ -37,6 +37,12 @@ import {
   isAgentSessionSurfaceBinding
 } from '../../shared/agent-session-host-authority'
 import { TerminalHistorySeedTransferRegistry } from './terminal-history-seed-transfer-registry'
+import {
+  createDaemonProductIdentity,
+  parseDaemonProductIdentity,
+  sameDaemonProductIdentity,
+  type DaemonProductIdentity
+} from './daemon-product-identity'
 
 export type DaemonServerOptions = {
   socketPath: string
@@ -46,6 +52,7 @@ export type DaemonServerOptions = {
   startedAtMs?: number
   /** Direct-construction seam for protocol fixture tests; production never overrides it. */
   protocolVersion?: number
+  daemonProductIdentity?: DaemonProductIdentity
   onIdleShutdown?: () => void
   /** Direct-construction-only controls; production uses the compiled initial-adoption timeout. */
   initialAdoptionTestConfig?: {
@@ -104,6 +111,7 @@ export class DaemonServer {
   private launchNonce: string | null
   private startedAtMs: number | null
   private protocolVersion: number
+  private daemonProductIdentity: DaemonProductIdentity
   private onIdleShutdown: () => void
   private onAuthenticatedClientPair: () => void
   private ptySpawnHealthCheck: () => Promise<void>
@@ -165,6 +173,8 @@ export class DaemonServer {
     this.tokenPath = opts.tokenPath
     this.pidPath = opts.pidPath ?? null
     this.protocolVersion = opts.protocolVersion ?? PROTOCOL_VERSION
+    this.daemonProductIdentity =
+      opts.daemonProductIdentity ?? createDaemonProductIdentity(undefined, this.protocolVersion)
     this.launchNonce =
       opts.launchNonce ??
       (this.protocolVersion >= CLEAN_DISCONNECT_PROTOCOL_VERSION ? randomUUID() : null)
@@ -441,6 +451,19 @@ export class DaemonServer {
       return
     }
 
+    if (this.protocolVersion >= 31) {
+      const clientProductIdentity = parseDaemonProductIdentity(hello.daemonProductIdentity)
+      if (
+        clientProductIdentity === null ||
+        !sameDaemonProductIdentity(this.daemonProductIdentity, clientProductIdentity)
+      ) {
+        this.log.log('client-hello-rejected', { reason: 'product-identity-mismatch' })
+        socket.write(encodeNdjson({ type: 'hello', ok: false, error: 'Product identity mismatch' }))
+        socket.destroy()
+        return
+      }
+    }
+
     if (hello.token !== this.token) {
       this.log.log('client-hello-rejected', { reason: 'invalid-token', role: hello.role })
       socket.write(encodeNdjson({ type: 'hello', ok: false, error: 'Invalid token' }))
@@ -453,6 +476,9 @@ export class DaemonServer {
       encodeNdjson({
         type: 'hello',
         ok: true,
+        ...(this.protocolVersion >= 31
+          ? { daemonProductIdentity: this.daemonProductIdentity }
+          : {}),
         ...(this.launchNonce && this.startedAtMs
           ? {
               daemonIdentity: {

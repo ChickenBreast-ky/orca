@@ -8,6 +8,7 @@ import { getDaemonSocketPath } from './daemon-spawner'
 import { encodeNdjson } from './ndjson'
 import type { SubprocessHandle } from './session'
 import { PROTOCOL_VERSION } from './types'
+import { createDaemonProductIdentity } from './daemon-product-identity'
 
 function unusedSubprocess(): SubprocessHandle {
   throw new Error('Test must not create a PTY')
@@ -39,7 +40,8 @@ describe('daemon authenticated client activity', () => {
         version: PROTOCOL_VERSION,
         token: readFileSync(tokenPath, 'utf8').trim(),
         clientId,
-        role
+        role,
+        daemonProductIdentity: createDaemonProductIdentity()
       })
     )
     await new Promise<void>((resolve, reject) => {

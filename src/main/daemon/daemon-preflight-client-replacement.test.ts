@@ -8,6 +8,7 @@ import { DaemonServer } from './daemon-server'
 import { encodeNdjson } from './ndjson'
 import { PROTOCOL_VERSION } from './types'
 import type { SubprocessHandle } from './session'
+import { createDaemonProductIdentity } from './daemon-product-identity'
 
 type DaemonServerPrivate = {
   pendingPtySpawnPreparations: Map<string, Set<unknown>>
@@ -56,7 +57,14 @@ describe('daemon preflight client replacement', () => {
       const socket = connect(socketPath)
       await new Promise<void>((resolve) => socket.once('connect', resolve))
       socket.write(
-        encodeNdjson({ type: 'hello', version: PROTOCOL_VERSION, token, clientId, role })
+        encodeNdjson({
+          type: 'hello',
+          version: PROTOCOL_VERSION,
+          token,
+          clientId,
+          role,
+          daemonProductIdentity: createDaemonProductIdentity()
+        })
       )
       await new Promise<void>((resolve) => socket.once('data', () => resolve()))
       return socket

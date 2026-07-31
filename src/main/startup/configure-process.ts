@@ -4,6 +4,10 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { getVersionManagerBinPaths } from '../codex-cli/command'
 import { getMainE2EConfig } from '../e2e-config'
+import {
+  prepareOrcaKyleUserDataPath,
+  resolveOrcaKyleUserDataPath
+} from '../../shared/orca-kyle-data-paths'
 
 const DEV_PARENT_SHUTDOWN_GRACE_MS = 3000
 const HTTP1_COMPATIBILITY_ENV_VAR = 'ORCA_DISABLE_HTTP2'
@@ -159,16 +163,40 @@ export function configureDevUserDataPath(isDev: boolean): void {
   }
 
   if (!isDev) {
+    const resolved = resolveOrcaKyleUserDataPath({
+      appDataPath: app.getPath('appData'),
+      env: process.env,
+      isDev,
+      isPackaged: app.isPackaged
+    })
+    app.setPath('userData', resolved.userDataPath)
+    prepareOrcaKyleUserDataPath({
+      isQaCandidate: resolved.kind === 'qa-candidate',
+      ownedAncestorPaths:
+        resolved.kind === 'qa-candidate'
+          ? [resolved.roots.qaRootPath, resolved.roots.qaCandidateRootPath]
+          : [],
+      officialUserDataPath: resolved.roots.officialUserDataPath,
+      userDataPath: resolved.userDataPath
+    })
     return
   }
-  const overrideUserDataPath = process.env.ORCA_DEV_USER_DATA_PATH
-  if (overrideUserDataPath) {
-    // Why: automated repros need an isolated profile so the dev's persisted tabs/worktrees don't skew startup and hide window bugs.
-    app.setPath('userData', overrideUserDataPath)
-    return
-  }
-  // Why: without a dev-only path, pnpm dev overwrites the packaged app's runtime pointer under userData and breaks the orca CLI.
-  app.setPath('userData', join(app.getPath('appData'), 'orca-dev'))
+  const resolved = resolveOrcaKyleUserDataPath({
+    appDataPath: app.getPath('appData'),
+    env: process.env,
+    isDev,
+    isPackaged: app.isPackaged
+  })
+  app.setPath('userData', resolved.userDataPath)
+  prepareOrcaKyleUserDataPath({
+    isQaCandidate: resolved.kind === 'qa-candidate',
+    ownedAncestorPaths:
+      resolved.kind === 'qa-candidate'
+        ? [resolved.roots.qaRootPath, resolved.roots.qaCandidateRootPath]
+        : [],
+    officialUserDataPath: resolved.roots.officialUserDataPath,
+    userDataPath: resolved.userDataPath
+  })
 }
 
 function areSameE2EHomePath(left: string, right: string): boolean {

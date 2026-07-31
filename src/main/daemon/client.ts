@@ -18,6 +18,12 @@ import type {
   DaemonEvent
 } from './types'
 import { addNodePtyRecoveryHint } from './node-pty-error-hints'
+import {
+  createDaemonProductIdentity,
+  parseDaemonProductIdentity,
+  sameDaemonProductIdentity,
+  type DaemonProductIdentity
+} from './daemon-product-identity'
 
 const CONNECT_TIMEOUT_MS = 5000
 const CONNECTION_ATTEMPT_WAIT_MS = CONNECT_TIMEOUT_MS * 4
@@ -27,6 +33,7 @@ export type DaemonClientOptions = {
   socketPath: string
   tokenPath: string
   protocolVersion?: number
+  daemonProductIdentity?: DaemonProductIdentity
 }
 
 type PendingRequest = {
@@ -39,6 +46,7 @@ export class DaemonClient {
   private socketPath: string
   private tokenPath: string
   private protocolVersion: number
+  private daemonProductIdentity: DaemonProductIdentity
   private clientId = randomUUID()
 
   private controlSocket: Socket | null = null
@@ -68,6 +76,8 @@ export class DaemonClient {
     this.socketPath = opts.socketPath
     this.tokenPath = opts.tokenPath
     this.protocolVersion = opts.protocolVersion ?? PROTOCOL_VERSION
+    this.daemonProductIdentity =
+      opts.daemonProductIdentity ?? createDaemonProductIdentity(undefined, this.protocolVersion)
   }
 
   isConnected(): boolean {
@@ -338,7 +348,8 @@ export class DaemonClient {
         version: this.protocolVersion,
         token,
         clientId: this.clientId,
-        role
+        role,
+        daemonProductIdentity: this.daemonProductIdentity
       }
 
       let buffer = ''
@@ -379,6 +390,18 @@ export class DaemonClient {
         try {
           const response = JSON.parse(line) as HelloResponse
           if (response.ok) {
+            if (this.protocolVersion >= 31) {
+              const daemonProductIdentity = parseDaemonProductIdentity(
+                response.daemonProductIdentity
+              )
+              if (
+                daemonProductIdentity === null ||
+                !sameDaemonProductIdentity(this.daemonProductIdentity, daemonProductIdentity)
+              ) {
+                finish(new DaemonProtocolError('Daemon product identity mismatch'))
+                return
+              }
+            }
             const identity = parseDaemonEndpointIdentity(response.daemonIdentity)
             if (
               (this.protocolVersion >= CLEAN_DISCONNECT_PROTOCOL_VERSION && identity === null) ||

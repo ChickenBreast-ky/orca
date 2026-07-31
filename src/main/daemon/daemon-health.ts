@@ -10,6 +10,11 @@ import {
 } from '../../shared/process-output-field-scanner'
 import { isStartupDiagnosticsEnabled, logStartupDiagnostic } from '../startup/startup-diagnostics'
 import { encodeNdjson } from './ndjson'
+import {
+  createDaemonProductIdentity,
+  parseDaemonProductIdentity,
+  sameDaemonProductIdentity
+} from './daemon-product-identity'
 import { getDaemonPidPath } from './daemon-spawner'
 import {
   PROTOCOL_VERSION,
@@ -131,7 +136,8 @@ export function checkDaemonHealth(socketPath: string, tokenPath: string): Promis
         version: PROTOCOL_VERSION,
         token,
         clientId: 'health-check',
-        role: 'control'
+        role: 'control',
+        daemonProductIdentity: createDaemonProductIdentity()
       }
       sock?.write(encodeNdjson(hello))
     }
@@ -161,6 +167,16 @@ export function checkDaemonHealth(socketPath: string, tokenPath: string): Promis
 
         if (message.type === 'hello') {
           if (!(message as HelloResponse).ok) {
+            settle('rejected')
+            return
+          }
+          const daemonProductIdentity = parseDaemonProductIdentity(
+            (message as HelloResponse).daemonProductIdentity
+          )
+          if (
+            daemonProductIdentity === null ||
+            !sameDaemonProductIdentity(createDaemonProductIdentity(), daemonProductIdentity)
+          ) {
             settle('rejected')
             return
           }
@@ -243,7 +259,8 @@ export function getMacDaemonSystemResolverHealth(
         version: protocolVersion,
         token,
         clientId: 'resolver-health-check',
-        role: 'control'
+        role: 'control',
+        daemonProductIdentity: createDaemonProductIdentity(undefined, protocolVersion)
       }
       sock?.write(encodeNdjson(hello))
     }
@@ -275,6 +292,21 @@ export function getMacDaemonSystemResolverHealth(
           if (!(message as HelloResponse).ok) {
             settle('unknown')
             return
+          }
+          if (protocolVersion >= 31) {
+            const daemonProductIdentity = parseDaemonProductIdentity(
+              (message as HelloResponse).daemonProductIdentity
+            )
+            if (
+              daemonProductIdentity === null ||
+              !sameDaemonProductIdentity(
+                createDaemonProductIdentity(undefined, protocolVersion),
+                daemonProductIdentity
+              )
+            ) {
+              settle('unknown')
+              return
+            }
           }
           // Why: the daemon must report health from inside its own process;
           // external launchctl bsexec probes can misclassify healthy PTYs.

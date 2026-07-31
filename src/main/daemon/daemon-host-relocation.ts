@@ -31,9 +31,6 @@ export type RelocatedDaemonHost = {
 const HOST_SUBDIR = 'daemon-host'
 const MARKER_NAME = '.materialized.json'
 
-// LOCAL appData (not roaming) so OneDrive/roaming never syncs this ~260MB runtime. Shared with NSIS uninstall (config/nsis/daemon-host-uninstall.nsh) — keep in sync.
-const LOCAL_HOST_ROOT_NAME = 'Orca'
-
 // Copy of Orca.exe renamed to a distinct image name so the NSIS updater's `taskkill /IM Orca.exe` can't match it.
 const DAEMON_HOST_EXE_NAME = 'orca-terminal-daemon.exe'
 
@@ -200,13 +197,7 @@ function readMarker(dir: string): MaterializeMarker | null {
 }
 
 function hostRootDir(): string {
-  // Prefer LOCAL appData (see LOCAL_HOST_ROOT_NAME); fall back to userData only if LOCALAPPDATA is unset.
-  const localAppData = process.env.LOCALAPPDATA
-  const base =
-    typeof localAppData === 'string' && localAppData.length > 0
-      ? join(localAppData, LOCAL_HOST_ROOT_NAME)
-      : app.getPath('userData')
-  return join(base, HOST_SUBDIR)
+  return join(app.getPath('userData'), HOST_SUBDIR)
 }
 
 /**

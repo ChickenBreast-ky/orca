@@ -8,6 +8,7 @@ import { DaemonClient } from './client'
 import { encodeNdjson, NDJSON_MAX_LINE_BYTES, NdjsonLineTooLongError } from './ndjson'
 import type { HelloMessage, DaemonRequest, DaemonEvent } from './types'
 import { getDaemonSocketPath } from './daemon-spawner'
+import { createDaemonProductIdentity, type DaemonProductIdentity } from './daemon-product-identity'
 
 function createTestDir(): string {
   return mkdtempSync(join(tmpdir(), 'daemon-client-test-'))
@@ -69,6 +70,7 @@ describe('DaemonClient', () => {
     rejectVersion?: boolean
     suppressHelloResponse?: boolean
     omitHelloIdentity?: boolean
+    daemonProductIdentity?: DaemonProductIdentity
     helloIdentity?: (role: 'control' | 'stream') => {
       pid: number
       startedAtMs: number
@@ -113,6 +115,8 @@ describe('DaemonClient', () => {
                 encodeNdjson({
                   type: 'hello',
                   ok: true,
+                  daemonProductIdentity:
+                    opts?.daemonProductIdentity ?? createDaemonProductIdentity(),
                   ...(!opts?.omitHelloIdentity
                     ? {
                         daemonIdentity: opts?.helloIdentity
@@ -162,6 +166,46 @@ describe('DaemonClient', () => {
       await client.ensureConnected()
 
       expect(client.getDaemonIdentity()).toEqual(identity)
+    })
+
+    it('rejects a daemon with a copied token when its product identity is different', async () => {
+      await startMockDaemon({
+        daemonProductIdentity: {
+          appId: 'com.orca.official',
+          buildVersion: '1.4.0',
+          protocolVersion: 31
+        }
+      })
+      client = new DaemonClient({ socketPath, tokenPath })
+
+      await expect(client.ensureConnected()).rejects.toThrow('Daemon product identity mismatch')
+      expect(client.isConnected()).toBe(false)
+    })
+
+    it('rejects a daemon with a stale build identity before establishing lifecycle sockets', async () => {
+      await startMockDaemon({
+        daemonProductIdentity: {
+          ...createDaemonProductIdentity(),
+          buildVersion: 'stale-build'
+        }
+      })
+      client = new DaemonClient({ socketPath, tokenPath })
+
+      await expect(client.ensureConnected()).rejects.toThrow('Daemon product identity mismatch')
+      expect(client.isConnected()).toBe(false)
+    })
+
+    it('rejects a daemon with a mismatched protocol identity before establishing lifecycle sockets', async () => {
+      await startMockDaemon({
+        daemonProductIdentity: {
+          ...createDaemonProductIdentity(),
+          protocolVersion: 30
+        }
+      })
+      client = new DaemonClient({ socketPath, tokenPath })
+
+      await expect(client.ensureConnected()).rejects.toThrow('Daemon product identity mismatch')
+      expect(client.isConnected()).toBe(false)
     })
 
     it('rejects a v24 daemon that omits endpoint identity', async () => {

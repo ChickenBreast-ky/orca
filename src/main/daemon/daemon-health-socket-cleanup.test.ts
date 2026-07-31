@@ -11,6 +11,7 @@ const { netConnectMock } = vi.hoisted(() => ({
 vi.mock('net', () => ({ connect: netConnectMock }))
 
 import { healthCheckDaemon, killStaleDaemon } from './daemon-health'
+import { createDaemonProductIdentity } from './daemon-product-identity'
 
 class FakeSocket extends EventEmitter {
   destroy = vi.fn()
@@ -45,7 +46,11 @@ describe('daemon health socket listener cleanup', () => {
     socket.emit(
       'data',
       Buffer.from(
-        '{"type":"hello","ok":true}\n{"id":"health-1","ok":true}\n{"id":"health-2","ok":true}\n'
+        `${JSON.stringify({
+          type: 'hello',
+          ok: true,
+          daemonProductIdentity: createDaemonProductIdentity()
+        })}\n{"id":"health-1","ok":true}\n{"id":"health-2","ok":true}\n`
       )
     )
 
