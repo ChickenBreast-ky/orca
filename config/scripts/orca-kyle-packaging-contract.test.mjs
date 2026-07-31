@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, lstatSync, mkdtempSync, readlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 

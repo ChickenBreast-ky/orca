@@ -70,7 +70,7 @@ describe('packaged CLI assets', () => {
         const launcherDir = join(resourcesDir, 'bin')
         const cliDir = join(resourcesDir, 'app.asar.unpacked', 'out', 'cli')
         const launcherPath = join(launcherDir, 'orca-ide')
-        const electronPath = join(appDir, 'orca-ide')
+        const electronPath = join(appDir, 'orca-kyle')
         const cliPath = join(cliDir, 'index.js')
 
         await mkdir(launcherDir, { recursive: true })
