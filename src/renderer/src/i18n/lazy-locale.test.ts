@@ -8,6 +8,10 @@ import {
 import { i18n, setRendererPluginLanguagePacks, setRendererUiLanguage } from './i18n'
 import { pluginLanguageResourceId } from '../../../shared/plugins/plugin-language-pack-artifact'
 
+const MANUAL_UPDATE_KEY = 'auto.components.settings.GeneralRemoteServerUpdates.manualOnly' as const
+const MANUAL_APP_UPDATE_DESCRIPTION_KEY =
+  'auto.components.settings.GeneralUpdateSettingsSection.888e459669' as const
+
 // Why: the renderer now lazy-loads non-English catalogs through an i18next
 // backend instead of bundling all five into the startup chunk. This guards the
 // invariant that switching language (I18nProvider effect / Settings) resolves
@@ -42,6 +46,44 @@ describe('renderer i18n lazy locale loading', () => {
     expect(i18n.t('missing.renderer.feature', { defaultValue: 'English fallback' })).toBe(
       'English fallback'
     )
+  })
+
+  it('resolves manual-update guidance from English for Korean when its catalog is sparse', async () => {
+    const english = i18n.t(MANUAL_UPDATE_KEY, { returnDetails: true })
+    expect(english).toMatchObject({
+      exactUsedKey: MANUAL_UPDATE_KEY,
+      usedLng: 'en',
+      usedNS: 'translation'
+    })
+    expect(english.res).not.toBe(MANUAL_UPDATE_KEY)
+
+    await i18n.changeLanguage('ko')
+    const korean = i18n.t(MANUAL_UPDATE_KEY, { returnDetails: true })
+    expect(korean).toMatchObject({
+      exactUsedKey: MANUAL_UPDATE_KEY,
+      usedLng: 'en',
+      usedNS: 'translation'
+    })
+    expect(korean.res).not.toBe(MANUAL_UPDATE_KEY)
+  })
+
+  it('resolves manual app-update guidance from English for Korean when its catalog is sparse', async () => {
+    const english = i18n.t(MANUAL_APP_UPDATE_DESCRIPTION_KEY, { returnDetails: true })
+    expect(english).toMatchObject({
+      exactUsedKey: MANUAL_APP_UPDATE_DESCRIPTION_KEY,
+      usedLng: 'en',
+      usedNS: 'translation'
+    })
+    expect(english.res).not.toBe(MANUAL_APP_UPDATE_DESCRIPTION_KEY)
+
+    await i18n.changeLanguage('ko')
+    const korean = i18n.t(MANUAL_APP_UPDATE_DESCRIPTION_KEY, { returnDetails: true })
+    expect(korean).toMatchObject({
+      exactUsedKey: MANUAL_APP_UPDATE_DESCRIPTION_KEY,
+      usedLng: 'en',
+      usedNS: 'translation'
+    })
+    expect(korean.res).not.toBe(MANUAL_APP_UPDATE_DESCRIPTION_KEY)
   })
 
   it('returns to English from a lazily-loaded locale', async () => {

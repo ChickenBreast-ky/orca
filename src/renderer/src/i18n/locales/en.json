@@ -5908,7 +5908,8 @@
           "31fd7150cf": "Checking for updates...",
           "3394d1f663": "checking",
           "d69a09b672": "Updates are checked automatically on launch.",
-          "7173352632": "idle"
+          "7173352632": "idle",
+          "888e459669": "Install app updates manually from a trusted local package. Orca does not check for or download updates."
         },
         "GeneralWorkspaceSettingsSection": {
           "3d538a98f7": "Choose apps available from a workspace's Open in menu.",
@@ -9672,7 +9673,8 @@
           "reviewUpdates": "{{value0}} updates available",
           "reviewServers": "Check for Server Updates",
           "serverCountOne": "1 paired server",
-          "reviewUpdateOne": "1 update available"
+          "reviewUpdateOne": "1 update available",
+          "manualOnly": "Remote server updates are manual-only. This client does not check, download, or install server updates."
         },
         "RemoteServerUpdateDialog": {
           "versionUnavailable": "Version unavailable",

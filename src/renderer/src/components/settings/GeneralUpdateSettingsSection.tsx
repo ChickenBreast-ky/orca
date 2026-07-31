@@ -13,7 +13,7 @@ export function GeneralUpdateSettingsSection(): React.JSX.Element {
           'Updates'
         )}
         description={translate(
-          'auto.components.settings.GeneralUpdateSettingsSection.d91ebfb87e',
+          'auto.components.settings.GeneralUpdateSettingsSection.888e459669',
           'Install app updates manually from a trusted local package. Orca does not check for or download updates.'
         )}
       />
