@@ -114,6 +114,10 @@ vi.mock('@electron-toolkit/utils', () => ({
   is: isMock
 }))
 
+vi.mock('../shared/update-policy', () => ({
+  APP_UPDATE_POLICY: { policy: 'manual-local-only', automatic: true, externalNetwork: false }
+}))
+
 vi.mock('./ipc/pty', () => ({
   killAllPty: killAllPtyMock
 }))

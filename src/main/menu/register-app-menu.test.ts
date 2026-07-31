@@ -139,68 +139,19 @@ describe('registerAppMenu', () => {
     expect(options.onBeforeReload).toHaveBeenCalledWith({ ignoreCache: true, webContentsId: 102 })
   })
 
-  it('routes Check for Updates modifier clicks to prerelease and perf checks', () => {
+  it('routes the manual updates menu item to Settings without starting an update check', () => {
     const options = buildMenuOptions()
     registerAppMenu(options)
 
-    // Why: Check for Updates lives under the app-name menu on macOS and
-    // under Help on Windows/Linux. The click behavior must be identical
-    // either way.
     const parentLabel = isMac ? 'Orca' : 'Help'
     const item = getSubmenu(getTemplate(), parentLabel).find(
-      (entry) => entry.label === 'Check for Updates...'
+      (entry) => entry.label === 'Manual App Updates...'
     )
 
-    item?.click?.({} as never, undefined as never, { shiftKey: true } as Electron.KeyboardEvent)
     item?.click?.({} as never, undefined as never, {} as Electron.KeyboardEvent)
-    item?.click?.(
-      {} as never,
-      undefined as never,
-      {
-        shiftKey: true,
-        ...(isMac ? { metaKey: true } : { ctrlKey: true })
-      } as Electron.KeyboardEvent
-    )
-    item?.click?.(
-      {} as never,
-      undefined as never,
-      (isMac ? { metaKey: true } : { ctrlKey: true }) as Electron.KeyboardEvent
-    )
-    item?.click?.(
-      {} as never,
-      undefined as never,
-      (isMac ? { ctrlKey: true } : { metaKey: true }) as Electron.KeyboardEvent
-    )
-    item?.click?.(
-      {} as never,
-      undefined as never,
-      { altKey: true, shiftKey: true } as Electron.KeyboardEvent
-    )
-    item?.click?.(
-      {} as never,
-      undefined as never,
-      {
-        triggeredByAccelerator: true,
-        shiftKey: true,
-        ...(isMac ? { metaKey: true } : { ctrlKey: true })
-      } as Electron.KeyboardEvent
-    )
 
-    expect(options.onCheckForUpdates.mock.calls).toEqual([
-      [{ includePrerelease: true, includePerfPrerelease: false }],
-      [{ includePrerelease: false, includePerfPrerelease: false }],
-      [{ includePrerelease: true, includePerfPrerelease: true }],
-      [{ includePrerelease: false, includePerfPrerelease: true }],
-      [{ includePrerelease: false, includePerfPrerelease: false }],
-      [
-        {
-          includePrerelease: !isMac,
-          includePerfPrerelease: false,
-          ...(isMac ? { localBuild: true } : {})
-        }
-      ],
-      [{ includePrerelease: false, includePerfPrerelease: false }]
-    ])
+    expect(options.onOpenSettings).toHaveBeenCalledOnce()
+    expect(options.onCheckForUpdates).not.toHaveBeenCalled()
   })
 
   it('shows the worktree palette shortcut as a display-only menu hint', () => {
@@ -253,7 +204,7 @@ describe('registerAppMenu', () => {
         'Report Crash...',
         'Getting Started with Orca',
         'Explore Orca',
-        'Check for Updates...'
+        'Manual App Updates...'
       ])
     )
   })
@@ -265,7 +216,7 @@ describe('registerAppMenu', () => {
     const appSubmenu = getSubmenu(template, 'Orca')
     const appLabels = appSubmenu.map((item) => item.label)
     expect(appLabels).toEqual(
-      expect.arrayContaining(['Check for Updates...', `Settings\t${isMac ? '⌘,' : 'Ctrl+,'}`])
+      expect.arrayContaining(['Manual App Updates...', `Settings\t${isMac ? '⌘,' : 'Ctrl+,'}`])
     )
     // Why: on macOS File should NOT duplicate Settings/Exit — those live in
     // the system app menu. Without global Export, there is no File item left.

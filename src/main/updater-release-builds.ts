@@ -7,6 +7,7 @@ import {
   type ReleaseBuild,
   type ReleaseChannel
 } from '../shared/release-channel'
+import { APP_UPDATE_POLICY } from '../shared/update-policy'
 import { isValidVersion } from './updater-fallback'
 
 const FETCH_TIMEOUT_MS = 8000
@@ -59,6 +60,10 @@ function parseReleaseEntry(entry: GitHubReleaseEntry, repo: string): ReleaseBuil
  * unauthenticated rate limit never touches background checks.
  */
 export async function listReleaseBuilds(channel: ReleaseChannel): Promise<ReleaseBuild[]> {
+  if (!APP_UPDATE_POLICY.automatic) {
+    void channel
+    return []
+  }
   const repo = getReleaseRepoForChannel(channel)
   const res = await net.fetch(getReleasesApiUrl(repo), {
     headers: { Accept: 'application/vnd.github+json' },

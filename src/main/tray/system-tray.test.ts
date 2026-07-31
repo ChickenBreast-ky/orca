@@ -231,23 +231,23 @@ describe('createSystemTray', () => {
       'Open Orca',
       undefined,
       'Settings',
-      'Check for Updates...',
+      'Manual App Updates...',
       undefined,
       'Quit'
     ])
     expect(trayInstances[0].on).not.toHaveBeenCalled()
     expect(nativeThemeMock.on).toHaveBeenCalledWith('updated', expect.any(Function))
 
-    for (const [label, callback] of [
-      ['Open Orca', options.onOpen],
-      ['Settings', options.onOpenSettings],
-      ['Check for Updates...', options.onCheckForUpdates],
-      ['Quit', options.onQuit]
+    for (const [label, callback, callCount] of [
+      ['Open Orca', options.onOpen, 1],
+      ['Settings', options.onOpenSettings, 1],
+      ['Manual App Updates...', options.onOpenSettings, 2],
+      ['Quit', options.onQuit, 1]
     ] as const) {
       builtMenuItems()
         .find((item) => item.label === label)
         ?.click?.()
-      expect(callback).toHaveBeenCalledOnce()
+      expect(callback).toHaveBeenCalledTimes(callCount)
     }
   })
 

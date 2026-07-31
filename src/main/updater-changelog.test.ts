@@ -6,7 +6,23 @@ vi.mock('electron', () => ({
   net: { fetch: (...args: unknown[]) => fetchMock(...args) }
 }))
 
-import { fetchChangelog } from './updater-changelog'
+vi.mock('../shared/update-policy', () => ({
+  APP_UPDATE_POLICY: { policy: 'manual-local-only', automatic: true, externalNetwork: false }
+}))
+
+import { fetchChangelog as fetchChangelogResult } from './updater-changelog'
+import type { ChangelogData } from '../shared/types'
+
+async function fetchChangelog(
+  incomingVersion: string,
+  localVersion: string
+): Promise<ChangelogData | null> {
+  const result = await fetchChangelogResult(incomingVersion, localVersion)
+  if (result.kind !== 'resolved') {
+    throw new Error('expected resolved changelog fixture result')
+  }
+  return result.changelog
+}
 
 function jsonResponse(body: unknown): Response {
   return { ok: true, json: () => Promise.resolve(body) } as unknown as Response

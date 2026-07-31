@@ -2383,6 +2383,7 @@ export type UpdateSource = 'local' | 'hourly'
 
 export type UpdateStatus = (
   | { state: 'idle' }
+  | { state: 'manual'; policy: 'manual-local-only'; userInitiated?: boolean }
   | { state: 'checking'; userInitiated?: boolean }
   | {
       state: 'available'

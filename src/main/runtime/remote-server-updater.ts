@@ -3,6 +3,7 @@ import type {
   RemoteServerUpdaterSnapshot
 } from '../../shared/remote-server-update'
 import type { UpdateCheckOptions } from '../../shared/types'
+import { APP_UPDATE_POLICY } from '../../shared/update-policy'
 
 type RemoteServerUpdaterAdapter = {
   getSnapshot: (runtimeId: string) => RemoteServerUpdaterSnapshot
@@ -17,22 +18,20 @@ const unavailableSnapshot = (runtimeId: string): RemoteServerUpdaterSnapshot => 
   support: {
     installMode: 'unsupported-headless-serve',
     automatic: false,
-    reason: 'updater-unavailable'
+    reason: 'manual-local-install-required'
   },
-  status: { state: 'idle' }
+  status: { state: 'manual', policy: APP_UPDATE_POLICY.policy }
 })
 
 let adapter: RemoteServerUpdaterAdapter = {
   getSnapshot: unavailableSnapshot,
-  check: () => {
-    throw new Error('remote_update_manual_required')
-  },
-  download: () => {
-    throw new Error('remote_update_manual_required')
-  },
-  install: () => {
-    throw new Error('remote_update_manual_required')
-  }
+  check: unavailableSnapshot,
+  download: unavailableSnapshot,
+  install: (runtimeId) => ({
+    accepted: false,
+    reason: 'manual-local-install-required',
+    runtimeId
+  })
 }
 
 export function configureRemoteServerUpdater(next: RemoteServerUpdaterAdapter): void {

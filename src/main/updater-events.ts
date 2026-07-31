@@ -188,10 +188,14 @@ export function registerAutoUpdaterHandlers({
     markUpdateAvailableEventPending(attemptId)
     void (async () => {
       try {
-        const changelog =
+        const changelogResult =
           isLocalBuildCheck() || isPinnedBuildCheck()
-            ? null
-            : await fetchChangelog(info.version, app.getVersion()).catch(() => null)
+            ? { kind: 'resolved' as const, changelog: null }
+            : await fetchChangelog(info.version, app.getVersion()).catch(() => ({
+                kind: 'resolved' as const,
+                changelog: null
+              }))
+        const changelog = changelogResult?.kind === 'resolved' ? changelogResult.changelog : null
 
         // Why: async fetch may take seconds; bail if a newer event superseded this attempt to avoid a stale 'available' broadcast.
         if (!isActiveUpdateCheckAttempt(attemptId)) {

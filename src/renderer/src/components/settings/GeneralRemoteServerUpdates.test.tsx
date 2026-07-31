@@ -35,27 +35,15 @@ describe('GeneralRemoteServerUpdates', () => {
     storeMock.state.setRemoteServerUpdateDialogOpen.mockReset()
   })
 
-  it('matches the local update check action and forwards modifier options', async () => {
+  it('exposes the manual-local-only route without starting a remote check', async () => {
     const container = document.createElement('div')
     const root = createRoot(container)
     await act(async () => root.render(<GeneralRemoteServerUpdates />))
-    storeMock.state.refreshRemoteServerUpdates.mockClear()
 
-    const button = container.querySelector('button')
-    expect(button?.textContent).toContain('Check for Server Updates')
-    expect(button?.querySelector('svg.lucide-refresh-cw')).not.toBeNull()
-    expect(button?.querySelector('svg.lucide-download')).toBeNull()
-    expect(container.textContent).toContain('1 paired server · 1 up to date')
-
-    await act(async () => {
-      button?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))
-    })
-
-    expect(storeMock.state.setRemoteServerUpdateDialogOpen).toHaveBeenCalledWith(true)
-    expect(storeMock.state.refreshRemoteServerUpdates).toHaveBeenCalledWith({
-      includePrerelease: true,
-      includePerfPrerelease: false
-    })
+    expect(container.querySelector('[data-update-policy="manual-local-only"]')).not.toBeNull()
+    expect(container.querySelector('button')).toBeNull()
+    expect(storeMock.state.refreshRemoteServerUpdates).not.toHaveBeenCalled()
+    expect(storeMock.state.setRemoteServerUpdateDialogOpen).not.toHaveBeenCalled()
     await act(async () => root.unmount())
   })
 })

@@ -224,6 +224,10 @@ export function UpdateCard() {
     [clearAnimationTimers]
   )
 
+  if (status.state === 'manual') {
+    return null
+  }
+
   // ── Visibility gates ──────────────────────────────────────────────
 
   const isUserInitiated = 'userInitiated' in status && status.userInitiated

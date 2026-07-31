@@ -77,6 +77,9 @@ vi.mock('electron', () => ({
 vi.mock('electron-updater', () => ({ autoUpdater: autoUpdaterMock }))
 vi.mock('./electron-updater-loader', () => ({ loadElectronAutoUpdater: () => autoUpdaterMock }))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
+vi.mock('../shared/update-policy', () => ({
+  APP_UPDATE_POLICY: { policy: 'manual-local-only', automatic: true, externalNetwork: false }
+}))
 vi.mock('./ipc/pty', () => ({ killAllPty: killAllPtyMock }))
 vi.mock('./updater-changelog', () => ({ fetchChangelog: vi.fn().mockResolvedValue(null) }))
 vi.mock('./updater-nudge', () => ({

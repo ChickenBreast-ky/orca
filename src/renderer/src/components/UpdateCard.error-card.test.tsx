@@ -131,3 +131,32 @@ describe('UpdateCard local builds', () => {
     expect(check).toHaveBeenCalledWith({ localBuild: true })
   })
 })
+
+describe('UpdateCard manual-only policy', () => {
+  it('keeps the manual-only card inert while transitioning to an available update', () => {
+    useAppStore.setState({
+      updateStatus: { state: 'manual', policy: 'manual-local-only' },
+      updateChangelog: null,
+      dismissedUpdateVersion: null,
+      updateCardCollapsed: false,
+      updateReassuranceSeen: true
+    })
+    const { container } = render(<UpdateCard />)
+
+    expect(container.firstChild).toBeNull()
+    expect(check).not.toHaveBeenCalled()
+    expect(download).not.toHaveBeenCalled()
+
+    act(() =>
+      useAppStore.getState().setUpdateStatus({
+        state: 'available',
+        version: '1.4.200',
+        changelog: null
+      })
+    )
+
+    expect(container.querySelector('button')).not.toBeNull()
+    expect(check).not.toHaveBeenCalled()
+    expect(download).not.toHaveBeenCalled()
+  })
+})

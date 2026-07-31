@@ -11,11 +11,12 @@ describe('remote server updater adapter', () => {
   it('defaults to a safe manual-only implementation', () => {
     expect(getRemoteServerUpdaterSnapshot('runtime-1')).toMatchObject({
       runtimeId: 'runtime-1',
-      support: { automatic: false, reason: 'updater-unavailable' }
+      support: { automatic: false, reason: 'manual-local-install-required' },
+      status: { state: 'manual', policy: 'manual-local-only' }
     })
-    expect(() => checkRemoteServerUpdater('runtime-1')).toThrow('remote_update_manual_required')
-    expect(() => downloadRemoteServerUpdater('runtime-1')).toThrow('remote_update_manual_required')
-    expect(() => installRemoteServerUpdater('runtime-1')).toThrow('remote_update_manual_required')
+    expect(checkRemoteServerUpdater('runtime-1').status).toMatchObject({ state: 'manual' })
+    expect(downloadRemoteServerUpdater('runtime-1').status).toMatchObject({ state: 'manual' })
+    expect(installRemoteServerUpdater('runtime-1')).toMatchObject({ accepted: false })
   })
 
   it('passes the runtime identity through every configured operation', () => {

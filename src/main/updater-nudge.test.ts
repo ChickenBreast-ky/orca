@@ -8,6 +8,10 @@ vi.mock('electron', () => ({
   net: { fetch: netFetchMock }
 }))
 
+vi.mock('../shared/update-policy', () => ({
+  APP_UPDATE_POLICY: { policy: 'manual-local-only', automatic: true, externalNetwork: false }
+}))
+
 import { fetchNudge, versionMatchesRange, shouldApplyNudge } from './updater-nudge'
 
 describe('updater-nudge', () => {

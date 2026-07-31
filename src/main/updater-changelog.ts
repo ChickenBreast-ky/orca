@@ -1,5 +1,6 @@
 import { net } from 'electron'
 import type { ChangelogData } from '../shared/types'
+import { APP_UPDATE_POLICY, type AppUpdatePolicy } from '../shared/update-policy'
 import { compareVersions } from './updater-fallback'
 
 type ChangelogEntry = {
@@ -11,6 +12,10 @@ type ChangelogEntry = {
 }
 
 const CHANGELOG_URL = 'https://onorca.dev/changelog'
+
+export type ChangelogFetchResult =
+  | { readonly kind: 'resolved'; readonly changelog: ChangelogData | null }
+  | { readonly kind: 'manual'; readonly policy: AppUpdatePolicy }
 
 function isValidEntry(entry: ChangelogEntry): boolean {
   return (
@@ -41,12 +46,15 @@ function hasRichContent(entry: ChangelogEntry): boolean {
 export async function fetchChangelog(
   incomingVersion: string,
   localVersion: string
-): Promise<ChangelogData | null> {
+): Promise<ChangelogFetchResult> {
+  if (!APP_UPDATE_POLICY.automatic) {
+    return { kind: 'manual', policy: APP_UPDATE_POLICY.policy }
+  }
   const res = await net.fetch('https://onorca.dev/whats-new/changelog.json', {
     signal: AbortSignal.timeout(5000)
   })
   if (!res.ok) {
-    return null
+    return { kind: 'resolved', changelog: null }
   }
   const json: unknown = await res.json()
 
@@ -54,7 +62,7 @@ export async function fetchChangelog(
   // Validate the shape before indexing into it to avoid runtime errors
   // that would propagate up and delay the 'available' status broadcast.
   if (!Array.isArray(json)) {
-    return null
+    return { kind: 'resolved', changelog: null }
   }
   const entries = json as ChangelogEntry[]
 
@@ -72,7 +80,7 @@ export async function fetchChangelog(
             ? localIndex - incomingIndex
             : null
       const { version: _, ...release } = entry
-      return { release, releasesBehind }
+      return { kind: 'resolved', changelog: { release, releasesBehind } }
     }
   }
 
@@ -127,8 +135,11 @@ export async function fetchChangelog(
     const { version: _, ...release } = candidate
     // Why: the shown content is from an older entry, not the incoming version.
     // Point to the generic changelog page so the link doesn't mislead.
-    return { release: { ...release, releaseNotesUrl: CHANGELOG_URL }, releasesBehind }
+    return {
+      kind: 'resolved',
+      changelog: { release: { ...release, releaseNotesUrl: CHANGELOG_URL }, releasesBehind }
+    }
   }
 
-  return null
+  return { kind: 'resolved', changelog: null }
 }

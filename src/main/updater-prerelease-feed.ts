@@ -1,6 +1,7 @@
 import { net } from 'electron'
 import { parse } from 'yaml'
 import { compareVersions, isPrereleaseVersion, isValidVersion } from './updater-fallback'
+import { APP_UPDATE_POLICY } from '../shared/update-policy'
 
 const ATOM_FEED_URL = 'https://github.com/stablyai/orca/releases.atom'
 const RELEASES_DOWNLOAD_BASE = 'https://github.com/stablyai/orca/releases/download'
@@ -56,6 +57,9 @@ export function isPerfPrereleaseTag(tag: string): boolean {
 }
 
 async function fetchReleaseFeedTags(): Promise<ReleaseFeedTag[] | null> {
+  if (!APP_UPDATE_POLICY.automatic) {
+    return []
+  }
   try {
     const res = await net.fetch(ATOM_FEED_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
     if (!res.ok) {
@@ -106,6 +110,11 @@ function getManifestAssetNames(manifestText: string): string[] {
 type ReleaseReadiness = 'ready' | 'not-ready' | 'unavailable'
 
 async function isReleaseAssetAvailable(tag: string, assetName: string): Promise<ReleaseReadiness> {
+  if (!APP_UPDATE_POLICY.automatic) {
+    void tag
+    void assetName
+    return 'unavailable'
+  }
   try {
     const assetUrl = assetName.startsWith('http')
       ? assetName
@@ -121,6 +130,10 @@ async function isReleaseAssetAvailable(tag: string, assetName: string): Promise<
 }
 
 async function getPlatformManifestReadiness(tag: string): Promise<ReleaseReadiness> {
+  if (!APP_UPDATE_POLICY.automatic) {
+    void tag
+    return 'unavailable'
+  }
   try {
     // Why: cancelled/draft releases can appear in GitHub's atom feed before
     // they have updater manifests or the ZIP/exe/AppImage assets referenced by

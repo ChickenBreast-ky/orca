@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const fetchMock = vi.fn()
 vi.mock('electron', () => ({ net: { fetch: (...args: unknown[]) => fetchMock(...args) } }))
 
+vi.mock('../shared/update-policy', () => ({
+  APP_UPDATE_POLICY: { policy: 'manual-local-only', automatic: true, externalNetwork: false }
+}))
+
 const { listReleaseBuilds, resolveTargetBuild } = await import('./updater-release-builds')
 
 function jsonResponse(body: unknown, init: { ok?: boolean; status?: number } = {}) {

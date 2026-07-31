@@ -7,41 +7,20 @@ import {
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from '../../../shared/remote-server-update'
 import type {
   RemoteServerUpdateInstallResult,
-  RemoteServerUpdaterSnapshot,
-  RemoteServerUpdateSupport
+  RemoteServerUpdaterSnapshot
 } from '../../../shared/remote-server-update'
 import type { PublicKnownRuntimeEnvironment } from '../../../shared/runtime-environments'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
 import type { UpdateCheckOptions } from '../../../shared/types'
 import { remoteServerUpdateErrorMessage } from './remote-server-update-errors'
+import {
+  checkingRemoteServerUpdateEntry,
+  type RemoteServerUpdateEntry
+} from './remote-server-update-entry'
 import { pollRemoteServerUpdater } from './remote-server-updater-polling'
 
-export type RemoteServerUpdatePhase =
-  | 'checking'
-  | 'available'
-  | 'current'
-  | 'manual'
-  | 'offline'
-  | 'queued'
-  | 'checking-update'
-  | 'downloading'
-  | 'restarting'
-  | 'updated'
-  | 'failed'
-
-export type RemoteServerUpdateEntry = {
-  environmentId: string
-  name: string
-  phase: RemoteServerUpdatePhase
-  currentVersion: string | null
-  targetVersion: string | null
-  progress: number | null
-  runtimeId: string | null
-  liveTabCount: number
-  liveLeafCount: number
-  support: RemoteServerUpdateSupport | null
-  error: string | null
-}
+export { checkingRemoteServerUpdateEntry } from './remote-server-update-entry'
+export type { RemoteServerUpdateEntry, RemoteServerUpdatePhase } from './remote-server-update-entry'
 
 export type RemoteServerUpdateTransport = {
   getRuntimeStatus: (environmentId: string, timeoutMs?: number) => Promise<RuntimeStatus>
@@ -71,24 +50,6 @@ export const DEFAULT_REMOTE_SERVER_UPDATE_TIMING: RemoteServerUpdateTiming = {
 export type RemoteServerUpdateRunOptions = {
   checkOptions?: UpdateCheckOptions
   timing?: RemoteServerUpdateTiming
-}
-
-export function checkingRemoteServerUpdateEntry(
-  environment: PublicKnownRuntimeEnvironment
-): RemoteServerUpdateEntry {
-  return {
-    environmentId: environment.id,
-    name: environment.name,
-    phase: 'checking',
-    currentVersion: null,
-    targetVersion: null,
-    progress: null,
-    runtimeId: null,
-    liveTabCount: 0,
-    liveLeafCount: 0,
-    support: null,
-    error: null
-  }
 }
 
 export async function inspectRemoteServerUpdate(
@@ -259,6 +220,16 @@ export async function runRemoteServerUpdate(
     }
 
     const install = await transport.install(entry.environmentId)
+    if (!install.accepted) {
+      next = {
+        ...next,
+        phase: 'manual',
+        progress: null,
+        error: install.reason
+      }
+      onProgress(next)
+      return next
+    }
     next = {
       ...next,
       phase: 'restarting',

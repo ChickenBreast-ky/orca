@@ -50,6 +50,7 @@ import {
   type ReleaseBuild,
   type ReleaseChannel
 } from '../shared/release-channel'
+import { APP_UPDATE_POLICY } from '../shared/update-policy'
 
 type CheckFailureSource = 'event' | 'promise' | 'fallback-promise'
 type MissingManifestPrereleaseFallbackResult = { userInitiated: boolean }
@@ -85,7 +86,15 @@ const UPDATE_CHECK_SILENT_SETTLE_DELAY_MS = 1_000
 const UPDATE_CHECK_STALL_TIMEOUT_MS = 45_000
 
 let mainWindowRef: BrowserWindow | null = null
-let currentStatus: UpdateStatus = { state: 'idle' }
+function manualUpdateStatus(userInitiated?: boolean): UpdateStatus {
+  return userInitiated === undefined
+    ? { state: 'manual', policy: APP_UPDATE_POLICY.policy }
+    : { state: 'manual', policy: APP_UPDATE_POLICY.policy, userInitiated }
+}
+
+let currentStatus: UpdateStatus = APP_UPDATE_POLICY.automatic
+  ? { state: 'idle' }
+  : manualUpdateStatus()
 let userInitiatedCheck = false
 let onBeforeQuitCleanup: (() => void | Promise<void>) | null = null
 let autoUpdaterInitialized = false
@@ -235,7 +244,12 @@ function decorateStatusWithActiveNudge(status: UpdateStatus): UpdateStatus {
   if (!activeUpdateNudgeId) {
     return status
   }
-  if (status.state === 'idle' || status.state === 'checking' || status.state === 'not-available') {
+  if (
+    status.state === 'idle' ||
+    status.state === 'manual' ||
+    status.state === 'checking' ||
+    status.state === 'not-available'
+  ) {
     return status
   }
   return { ...status, activeNudgeId: activeUpdateNudgeId }
@@ -953,6 +967,13 @@ export function getUpdateStatus(): UpdateStatus {
 }
 
 export function getRemoteServerUpdateSupport(): RemoteServerUpdateSupport {
+  if (!APP_UPDATE_POLICY.automatic) {
+    return {
+      installMode: updateInstallMode,
+      automatic: false,
+      reason: 'manual-local-install-required'
+    }
+  }
   if (!app.isPackaged || is.dev) {
     return {
       installMode: updateInstallMode,
@@ -996,12 +1017,18 @@ export function checkForRemoteServerUpdate(
   runtimeId: string,
   options?: UpdateCheckOptions
 ): RemoteServerUpdaterSnapshot {
+  if (!APP_UPDATE_POLICY.automatic) {
+    return getRemoteServerUpdaterSnapshot(runtimeId)
+  }
   assertRemoteServerUpdateAvailable()
   checkForUpdatesFromMenu(options)
   return getRemoteServerUpdaterSnapshot(runtimeId)
 }
 
 export function downloadRemoteServerUpdate(runtimeId: string): RemoteServerUpdaterSnapshot {
+  if (!APP_UPDATE_POLICY.automatic) {
+    return getRemoteServerUpdaterSnapshot(runtimeId)
+  }
   assertRemoteServerUpdateAvailable()
   if (currentStatus.state !== 'available') {
     throw new Error('remote_update_not_available')
@@ -1011,6 +1038,9 @@ export function downloadRemoteServerUpdate(runtimeId: string): RemoteServerUpdat
 }
 
 export function installRemoteServerUpdate(runtimeId: string): RemoteServerUpdateInstallResult {
+  if (!APP_UPDATE_POLICY.automatic) {
+    return { accepted: false, reason: 'manual-local-install-required', runtimeId }
+  }
   assertRemoteServerUpdateAvailable()
   if (currentStatus.state !== 'downloaded') {
     throw new Error('remote_update_not_downloaded')
@@ -1351,6 +1381,10 @@ function runBackgroundUpdateCheck(
 }
 
 export function checkForUpdates(): void {
+  if (!APP_UPDATE_POLICY.automatic) {
+    sendStatus(manualUpdateStatus())
+    return
+  }
   // Why: span records only check launch (always Success), not outcome; dashboards must filter `updater.outcome === 'launched'`, not this span's success rate.
   void withUpdaterSpan({ stage: 'check' }, async (span) => {
     span.setAttribute('updater.outcome', 'launched')
@@ -1373,6 +1407,11 @@ function enableIncludePrerelease(): void {
 
 /** Menu-triggered check — delegates feedback to renderer toasts via userInitiated flag */
 export function checkForUpdatesFromMenu(options?: UpdateCheckOptions): void {
+  if (!APP_UPDATE_POLICY.automatic) {
+    void options
+    sendStatus(manualUpdateStatus(true))
+    return
+  }
   if (!app.isPackaged || is.dev) {
     sendStatus({ state: 'not-available', userInitiated: true })
     return
@@ -1512,6 +1551,10 @@ async function checkForLocalBuildFromMenu(): Promise<void> {
 }
 
 export async function listAvailableReleaseBuilds(channel: ReleaseChannel): Promise<ReleaseBuild[]> {
+  if (!APP_UPDATE_POLICY.automatic) {
+    void channel
+    return []
+  }
   return listReleaseBuilds(channel)
 }
 
@@ -1592,6 +1635,10 @@ export function isQuittingForUpdate(): boolean {
 }
 
 export function quitAndInstall(): void {
+  if (!APP_UPDATE_POLICY.automatic) {
+    sendStatus(manualUpdateStatus(true))
+    return
+  }
   if (
     localBuildSelectionInProgress ||
     pinnedBuildSelectionInProgress ||
@@ -1623,6 +1670,9 @@ export function quitAndInstall(): void {
 }
 
 async function checkForUpdateNudge(): Promise<void> {
+  if (!APP_UPDATE_POLICY.automatic) {
+    return
+  }
   if (!app.isPackaged || is.dev) {
     return
   }
@@ -1734,6 +1784,12 @@ export function setupAutoUpdater(
   getReleaseChannelOverride = opts?.getReleaseChannelOverride ?? null
   updateInstallMode = opts?.installMode ?? 'interactive'
   lastInstallDeferralVersion = { download: null, install: null }
+
+  if (!APP_UPDATE_POLICY.automatic) {
+    currentStatus = manualUpdateStatus()
+    mainWindowRef.webContents.send('updater:status', currentStatus)
+    return
+  }
 
   const serveHandoffFailure = getServeUpdateHandoffFailure()
   if (serveHandoffFailure) {
@@ -1868,6 +1924,10 @@ export function setupAutoUpdater(
 }
 
 export function downloadUpdate(): void {
+  if (!APP_UPDATE_POLICY.automatic) {
+    sendStatus(manualUpdateStatus(true))
+    return
+  }
   if (localBuildSelectionInProgress || pinnedBuildSelectionInProgress || downloadInFlight) {
     return
   }

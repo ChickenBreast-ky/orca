@@ -10,6 +10,10 @@ vi.mock('electron', () => ({
   net: { fetch: netFetchMock }
 }))
 
+vi.mock('../shared/update-policy', () => ({
+  APP_UPDATE_POLICY: { policy: 'manual-local-only', automatic: true, externalNetwork: false }
+}))
+
 function buildAtomFeed(tags: string[]): string {
   const entries = tags
     .map(

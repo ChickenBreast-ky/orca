@@ -273,8 +273,8 @@ export function createSystemTray(opts: SystemTrayOptions): Tray | null {
             click: safeMenuAction(() => opts.onOpenSettings())
           },
           {
-            label: translateMain('menu.checkForUpdates', 'Check for Updates...'),
-            click: safeMenuAction(() => opts.onCheckForUpdates())
+            label: translateMain('menu.checkForUpdates', 'Manual App Updates...'),
+            click: safeMenuAction(() => opts.onOpenSettings())
           },
           { type: 'separator' }
         ] as Electron.MenuItemConstructorOptions[])

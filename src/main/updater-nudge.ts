@@ -1,5 +1,6 @@
 import { net } from 'electron'
 import { compareVersions, isValidVersion } from './updater-fallback'
+import { APP_UPDATE_POLICY } from '../shared/update-policy'
 
 export type NudgeConfig = {
   id: string
@@ -8,6 +9,9 @@ export type NudgeConfig = {
 }
 
 export async function fetchNudge(): Promise<NudgeConfig | null> {
+  if (!APP_UPDATE_POLICY.automatic) {
+    return null
+  }
   try {
     const res = await net.fetch('https://onorca.dev/whats-new/nudge.json', {
       signal: AbortSignal.timeout(5000)

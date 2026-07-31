@@ -13,6 +13,7 @@ export type RemoteServerUpdateSupport = {
   reason:
     | 'available'
     | 'manual-service-update-required'
+    | 'manual-local-install-required'
     | 'unpackaged-build'
     | 'updater-unavailable'
 }
@@ -24,9 +25,15 @@ export type RemoteServerUpdaterSnapshot = {
   status: UpdateStatus
 }
 
-export type RemoteServerUpdateInstallResult = {
-  accepted: true
-  fromVersion: string
-  targetVersion: string
-  runtimeId: string
-}
+export type RemoteServerUpdateInstallResult =
+  | {
+      accepted: true
+      fromVersion: string
+      targetVersion: string
+      runtimeId: string
+    }
+  | {
+      accepted: false
+      reason: 'manual-local-install-required'
+      runtimeId: string
+    }
