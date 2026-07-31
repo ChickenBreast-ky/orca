@@ -26,6 +26,7 @@ import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { buildNotificationOptions } from './notification-options'
 import { readNotificationAuthorizationStatus } from './notification-authorization-status'
 import { parsePaneKey } from '../../shared/stable-pane-id'
+import { PRODUCT_IDENTITY } from '../../shared/product-identity'
 import { setTrayAttention } from '../tray/system-tray'
 import { isMainWindowVisible } from '../window/main-window-visibility'
 
@@ -34,7 +35,7 @@ const MAX_RECENT_NOTIFICATION_KEYS = 50
 const NOTIFICATION_DISPLAY_CONFIRMATION_TIMEOUT_MS = 2500
 const NOTIFICATION_RELEASE_FALLBACK_MS = 5 * 60 * 1000
 const MAX_NOTIFICATION_SOUND_BYTES = 10 * 1024 * 1024
-const MACOS_PACKAGED_BUNDLE_ID = 'com.stablyai.orca'
+const MACOS_PACKAGED_BUNDLE_ID = PRODUCT_IDENTITY.appId
 const MACOS_NOTIFICATION_SETTINGS_URL =
   'x-apple.systempreferences:com.apple.Notifications-Settings.extension'
 const NOTIFICATION_SOUND_MIME_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
@@ -187,8 +188,7 @@ function probeNotificationDelivery(): Promise<NotificationDeliveryProbeResult> {
 }
 
 function getMacNotificationSettingsUrl(): string {
-  const bundleId = process.env.ORCA_DEV_MACOS_BUNDLE_ID ?? MACOS_PACKAGED_BUNDLE_ID
-  return `${MACOS_NOTIFICATION_SETTINGS_URL}?id=${encodeURIComponent(bundleId)}`
+  return `${MACOS_NOTIFICATION_SETTINGS_URL}?id=${encodeURIComponent(MACOS_PACKAGED_BUNDLE_ID)}`
 }
 
 function openNotificationSystemSettings(): void {

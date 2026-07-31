@@ -122,8 +122,8 @@ describe('electron-builder config', () => {
     expect(electronBuilderConfig.mac.extraResources).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          from: 'native/computer-use-macos/.build/release/Orca Computer Use.app',
-          to: 'Orca Computer Use.app'
+          from: 'native/computer-use-macos/.build/release/Orca Kyle Computer Use.app',
+          to: 'Orca Kyle Computer Use.app'
         })
       ])
     )
@@ -143,7 +143,7 @@ describe('electron-builder config', () => {
         }),
         expect.objectContaining({
           from: 'native/windows-cli-launcher/.build/orca.exe',
-          to: 'bin/orca.exe'
+          to: 'bin/orca-kyle.exe'
         })
       ])
     )
@@ -163,7 +163,7 @@ describe('electron-builder config', () => {
       expect.arrayContaining([
         expect.objectContaining({
           from: 'resources/win32/bin/orca.cmd',
-          to: 'bin/orca.cmd'
+          to: 'bin/orca-kyle.cmd'
         })
       ])
     )
@@ -215,16 +215,16 @@ describe('electron-builder config', () => {
   })
 
   it('matches the Linux desktop entry to Electron window class', () => {
-    expect(electronBuilderConfig.linux.desktop.entry.StartupWMClass).toBe('orca')
+    expect(electronBuilderConfig.linux.desktop.entry.StartupWMClass).toBe('orca-kyle')
   })
 
   it('uses AppImage and deb as local Linux targets without changing existing artifact names', () => {
     expect(electronBuilderConfig.linux.target).toEqual(['AppImage', 'deb'])
-    expect(electronBuilderConfig.appImage.artifactName).toBe('orca-linux.${ext}')
-    expect(electronBuilderConfig.deb.artifactName).toBe('orca-ide_${version}_${arch}.${ext}')
+    expect(electronBuilderConfig.appImage.artifactName).toBe('orca-kyle-linux.${ext}')
+    expect(electronBuilderConfig.deb.artifactName).toBe('orca-kyle_${version}_${arch}.${ext}')
     expect(electronBuilderConfig.rpm).toMatchObject({
-      packageName: 'orca-ide',
-      artifactName: 'orca-ide-${version}.${arch}.${ext}'
+      packageName: 'orca-kyle',
+      artifactName: 'orca-kyle-${version}.${arch}.${ext}'
     })
   })
 
@@ -235,7 +235,7 @@ describe('electron-builder config', () => {
       delete require.cache[configPath]
       process.env.ORCA_LINUX_ARM64_RELEASE = '1'
       expect(require('../electron-builder.config.cjs').appImage.artifactName).toBe(
-        'orca-linux-arm64.${ext}'
+        'orca-kyle-linux-arm64.${ext}'
       )
     } finally {
       if (original === undefined) {
@@ -307,7 +307,7 @@ describe('electron-builder config', () => {
   it('builds hourly artifacts with the release signing identity', () => {
     withHourlyEnv((config) => {
       expect(config.mac.appId).toBeUndefined()
-      expect(config.appId).toBe('com.stablyai.orca')
+      expect(config.appId).toBe('com.chickenbreastky.orca-kyle')
       expect(config.mac.hardenedRuntime).toBe(true)
       expect(config.forceCodeSigning).toBe(true)
     })
@@ -579,7 +579,7 @@ describe('electron-builder config', () => {
       const root = await mkdtemp(join(tmpdir(), 'orca-electron-builder-config-'))
       try {
         const resourcesDir = join(root, 'linux-unpacked', 'resources')
-        const launcherPath = join(resourcesDir, 'bin', 'orca-ide')
+        const launcherPath = join(resourcesDir, 'bin', 'orca-kyle')
         await mkdir(join(resourcesDir, 'bin'), { recursive: true })
         await cp(
           join(process.cwd(), 'resources', 'plugins', 'launch'),

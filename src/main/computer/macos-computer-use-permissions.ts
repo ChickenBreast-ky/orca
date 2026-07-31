@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { RuntimeClientError } from './runtime-client-error'
 import { resolveMacOSComputerUseAppPath } from './macos-native-provider-paths'
 import { getComputerUsePermissionStatus } from './macos-computer-use-permission-status'
+import { PRODUCT_IDENTITY, isOrcaKyleBundleIdentifier } from '../../shared/product-identity'
 import type {
   ComputerUsePermissionId,
   ComputerUsePermissionResetResult,
@@ -10,7 +11,7 @@ import type {
   ComputerUsePermissionStatusResult
 } from '../../shared/computer-use-permissions-types'
 
-const DEFAULT_COMPUTER_USE_BUNDLE_ID = 'com.stablyai.orca.computer-use'
+const DEFAULT_COMPUTER_USE_BUNDLE_ID = PRODUCT_IDENTITY.computerUseBundleId
 
 export { getComputerUsePermissionStatus } from './macos-computer-use-permission-status'
 
@@ -143,7 +144,7 @@ function readComputerUseBundleId(helperAppPath: string): string {
         stdio: ['ignore', 'pipe', 'ignore']
       }
     ).trim()
-    return bundleId || DEFAULT_COMPUTER_USE_BUNDLE_ID
+    return isOrcaKyleBundleIdentifier(bundleId) ? bundleId : DEFAULT_COMPUTER_USE_BUNDLE_ID
   } catch {
     return DEFAULT_COMPUTER_USE_BUNDLE_ID
   }

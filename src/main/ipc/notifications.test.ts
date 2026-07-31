@@ -226,7 +226,7 @@ describe('registerNotificationHandlers', () => {
       handler({})
 
       expect(shellOpenExternalMock).toHaveBeenCalledWith(
-        'x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=com.stablyai.orca.dev.fb5a47066f08'
+        'x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=com.chickenbreastky.orca-kyle'
       )
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })

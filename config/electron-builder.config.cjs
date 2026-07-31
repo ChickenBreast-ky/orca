@@ -24,7 +24,7 @@ const isMacRelease = process.env.ORCA_MAC_RELEASE === '1' || isMacHourly
 const isLinuxArm64Release = process.env.ORCA_LINUX_ARM64_RELEASE === '1'
 const localBuildVersion = isMacRelease ? undefined : process.env.ORCA_LOCAL_BUILD_VERSION
 const hourlyBuildVersion = isMacHourly ? process.env.ORCA_HOURLY_BUILD_VERSION : undefined
-const appId = 'com.stablyai.orca'
+const appId = 'com.chickenbreastky.orca-kyle'
 const featureWallResources = {
   from: 'resources/onboarding/feature-wall',
   to: 'onboarding/feature-wall'
@@ -69,7 +69,7 @@ const winSpeechNativeResource = {
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId,
-  productName: 'Orca',
+  productName: 'Orca Kyle',
   ...(hourlyBuildVersion
     ? { extraMetadata: { version: hourlyBuildVersion } }
     : localBuildVersion
@@ -253,7 +253,7 @@ module.exports = {
       chmodSync(join(resourcesDir, filename), 0o755)
     }
     if (context.electronPlatformName === 'darwin') {
-      await signMacComputerUseHelper(join(resourcesDir, 'Orca Computer Use.app'), context.packager)
+      await signMacComputerUseHelper(join(resourcesDir, 'Orca Kyle Computer Use.app'), context.packager)
       await signMacNotificationStatusHelper(
         join(resourcesDir, '..', 'MacOS', 'orca-notification-status'),
         context.packager
@@ -261,7 +261,7 @@ module.exports = {
     }
   },
   win: {
-    executableName: 'Orca',
+    executableName: 'Orca Kyle',
     // Why: Windows installers are signed after electron-builder packaging by
     // SignPath, so the packager cannot infer the updater publisherName.
     signtoolOptions: {
@@ -273,11 +273,11 @@ module.exports = {
       winSpeechNativeResource,
       {
         from: 'resources/win32/bin/orca.cmd',
-        to: 'bin/orca.cmd'
+        to: 'bin/orca-kyle.cmd'
       },
       {
         from: 'native/windows-cli-launcher/.build/orca.exe',
-        to: 'bin/orca.exe'
+        to: 'bin/orca-kyle.exe'
       },
       {
         from: 'node_modules/agent-browser/bin/agent-browser-win32-x64.exe',
@@ -291,7 +291,7 @@ module.exports = {
     ]
   },
   nsis: {
-    artifactName: 'orca-windows-setup.${ext}',
+    artifactName: 'orca-kyle-windows-setup.${ext}',
     shortcutName: '${productName}',
     uninstallDisplayName: '${productName}',
     createDesktopShortcut: 'always',
@@ -341,7 +341,7 @@ module.exports = {
       macSpeechNativeResource,
       {
         from: 'resources/darwin/bin/orca',
-        to: 'bin/orca'
+        to: 'bin/orca-kyle'
       },
       {
         from: 'node_modules/agent-browser/bin/agent-browser-darwin-${arch}',
@@ -354,8 +354,8 @@ module.exports = {
         to: 'serve-sim'
       },
       {
-        from: 'native/computer-use-macos/.build/release/Orca Computer Use.app',
-        to: 'Orca Computer Use.app'
+        from: 'native/computer-use-macos/.build/release/Orca Kyle Computer Use.app',
+        to: 'Orca Kyle Computer Use.app'
       },
       featureWallResources
     ],
@@ -383,20 +383,16 @@ module.exports = {
   // silently downgrading to ad-hoc artifacts that look shippable in CI logs.
   forceCodeSigning: isMacRelease,
   dmg: {
-    artifactName: 'orca-macos-${arch}.${ext}'
+    artifactName: 'orca-kyle-macos-${arch}.${ext}'
   },
   linux: {
-    // Why: Ubuntu desktop ships GNOME Orca as the `orca` package and /usr/bin/orca.
-    // The Linux installer should not claim those system package/file names.
-    executableName: 'orca-ide',
+    executableName: 'orca-kyle',
     // Why: the icns source lets electron-builder emit standard hicolor PNG
     // sizes; a single 1024px PNG is ignored by some Linux docks/launchers.
     icon: 'resources/build/icon.icns',
     desktop: {
       entry: {
-        // Why: Electron reports WM_CLASS=orca for the visible Linux window;
-        // GNOME docks need an exact match to group it with orca-ide.desktop.
-        StartupWMClass: 'orca'
+        StartupWMClass: 'orca-kyle'
       }
     },
     extraResources: [
@@ -405,7 +401,7 @@ module.exports = {
       linuxSpeechNativeResource,
       {
         from: 'resources/linux/bin/orca-ide',
-        to: 'bin/orca-ide'
+        to: 'bin/orca-kyle'
       },
       {
         from: 'node_modules/agent-browser/bin/agent-browser-linux-${arch}',
@@ -422,11 +418,11 @@ module.exports = {
     category: 'Utility'
   },
   appImage: {
-    artifactName: isLinuxArm64Release ? 'orca-linux-arm64.${ext}' : 'orca-linux.${ext}'
+    artifactName: isLinuxArm64Release ? 'orca-kyle-linux-arm64.${ext}' : 'orca-kyle-linux.${ext}'
   },
   deb: {
-    packageName: 'orca-ide',
-    artifactName: 'orca-ide_${version}_${arch}.${ext}',
+    packageName: 'orca-kyle',
+    artifactName: 'orca-kyle_${version}_${arch}.${ext}',
     // Why: xvfb lets the bundled `orca serve` CLI run browser panes on a headless
     // Linux host — Chromium needs a display server even for offscreen rendering,
     // and serve starts Xvfb itself when present (see ensure-virtual-display.ts).
@@ -447,8 +443,8 @@ module.exports = {
     afterRemove: 'resources/linux/packaging/after-remove.sh'
   },
   rpm: {
-    packageName: 'orca-ide',
-    artifactName: 'orca-ide-${version}.${arch}.${ext}',
+    packageName: 'orca-kyle',
+    artifactName: 'orca-kyle-${version}.${arch}.${ext}',
     // Why: see deb depends. RPM distros ship Xvfb as xorg-x11-server-Xvfb (there
     // is no `xvfb` package), so the name differs from the deb here.
     depends: [
@@ -486,7 +482,7 @@ function chmodUnixCliLaunchers(resourcesDir, electronPlatformName) {
   if (electronPlatformName === 'win32') {
     return
   }
-  for (const launcherName of ['orca', 'orca-ide']) {
+  for (const launcherName of ['orca-kyle']) {
     const launcherPath = join(resourcesDir, 'bin', launcherName)
     if (!existsSync(launcherPath)) {
       continue
@@ -517,7 +513,7 @@ function chmodMacServeSimHelpers(resourcesDir, electronPlatformName) {
 async function signMacComputerUseHelper(helperAppPath, packager) {
   if (!existsSync(helperAppPath)) {
     if (isMacRelease) {
-      throw new Error(`Missing Orca Computer Use helper app at ${helperAppPath}`)
+      throw new Error(`Missing Orca Kyle Computer Use helper app at ${helperAppPath}`)
     }
     return
   }
@@ -531,7 +527,7 @@ async function signMacComputerUseHelper(helperAppPath, packager) {
     findInstalledMacSigningIdentity(codeSigningInfo?.keychainFile) ??
     (isMacRelease ? null : '-')
   if (!identity) {
-    throw new Error('Missing signing identity for Orca Computer Use helper app')
+    throw new Error('Missing signing identity for Orca Kyle Computer Use helper app')
   }
   // Why: TCC grants attach to this nested app's code identity. Sign it before
   // the outer Orca.app is sealed so production builds preserve that identity.

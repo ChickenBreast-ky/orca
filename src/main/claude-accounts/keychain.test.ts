@@ -3,10 +3,13 @@ import { execFile } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   deleteActiveClaudeKeychainCredentials,
+  deleteManagedClaudeKeychainCredentials,
   readActiveClaudeKeychainCredentials,
   readActiveClaudeKeychainCredentialsStrict,
+  readManagedClaudeKeychainCredentials,
   writeActiveClaudeKeychainCredentials,
-  writeActiveClaudeKeychainCredentialsForRuntime
+  writeActiveClaudeKeychainCredentialsForRuntime,
+  writeManagedClaudeKeychainCredentials
 } from './keychain'
 
 vi.mock('node:child_process', () => ({
@@ -25,7 +28,7 @@ function setPlatform(platform: NodeJS.Platform): void {
 
 function serviceForConfigDir(configDir: string): string {
   const suffix = createHash('sha256').update(configDir).digest('hex').slice(0, 8)
-  return `Claude Code-credentials-${suffix}`
+  return `Orca Kyle Claude Code Credentials-${suffix}`
 }
 
 function invokeExecFileCallback(
@@ -51,7 +54,7 @@ describe('Claude Keychain credentials', () => {
     }
   })
 
-  it('reads config-scoped Claude Code 2.1 credentials before legacy credentials', async () => {
+  it('reads only fork-scoped Claude credentials without importing shared credentials', async () => {
     const configDir = '/tmp/orca-claude-login-test'
     const scopedService = serviceForConfigDir(configDir)
     execFileMock.mockImplementationOnce((_file, _args, _options, callback) => {
@@ -74,29 +77,17 @@ describe('Claude Keychain credentials', () => {
     ])
   })
 
-  it('falls back to the legacy unsuffixed Claude Code credentials service', async () => {
-    const configDir = '/tmp/orca-claude-login-test'
+  it('does not fall back to the shared Claude Code credentials service', async () => {
+    const configDir = '/tmp/orca-kyle-claude-login-test'
     const notFound = Object.assign(new Error('not found'), { code: 44 })
-    execFileMock
-      .mockImplementationOnce((_file, _args, _options, callback) => {
-        invokeExecFileCallback(callback, notFound, '', 'could not be found')
-        return null as never
-      })
-      .mockImplementationOnce((_file, _args, _options, callback) => {
-        invokeExecFileCallback(callback, null, 'legacy\n', '')
-        return null as never
-      })
+    execFileMock.mockImplementationOnce((_file, _args, _options, callback) => {
+      invokeExecFileCallback(callback, notFound, '', 'could not be found')
+      return null as never
+    })
 
-    await expect(readActiveClaudeKeychainCredentials(configDir)).resolves.toBe('legacy')
-
-    expect(execFileMock.mock.calls[1][1]).toEqual([
-      'find-generic-password',
-      '-s',
-      'Claude Code-credentials',
-      '-a',
-      process.env.USER || process.env.USERNAME || 'user',
-      '-w'
-    ])
+    await expect(readActiveClaudeKeychainCredentials(configDir)).resolves.toBeNull()
+    expect(execFileMock).toHaveBeenCalledTimes(1)
+    expect(executedServices()).not.toContain('Claude Code-credentials')
   })
 
   it('writes active credentials to the config-scoped Claude Code service', async () => {
@@ -121,7 +112,7 @@ describe('Claude Keychain credentials', () => {
     ])
   })
 
-  it('writes runtime credentials to scoped and legacy services for old Claude Code compatibility', async () => {
+  it('writes runtime credentials only to the fork-scoped service', async () => {
     const configDir = '/tmp/orca-claude-login-test'
     const scopedService = serviceForConfigDir(configDir)
     execFileMock.mockImplementation((_file, _args, _options, callback) => {
@@ -137,16 +128,6 @@ describe('Claude Keychain credentials', () => {
         '-U',
         '-s',
         scopedService,
-        '-a',
-        process.env.USER || process.env.USERNAME || 'user',
-        '-w',
-        'credentials-json'
-      ],
-      [
-        'add-generic-password',
-        '-U',
-        '-s',
-        'Claude Code-credentials',
         '-a',
         process.env.USER || process.env.USERNAME || 'user',
         '-w',
@@ -206,7 +187,7 @@ describe('Claude Keychain credentials', () => {
     expect(killMock).toHaveBeenCalled()
   })
 
-  it('deletes both scoped and legacy active credentials for config-dir cleanup', async () => {
+  it('deletes only fork-scoped active credentials during config-dir cleanup', async () => {
     const configDir = '/tmp/orca-claude-login-test'
     const scopedService = serviceForConfigDir(configDir)
     execFileMock.mockImplementation((_file, _args, _options, callback) => {
@@ -223,14 +204,51 @@ describe('Claude Keychain credentials', () => {
         scopedService,
         '-a',
         process.env.USER || process.env.USERNAME || 'user'
-      ],
-      [
-        'delete-generic-password',
-        '-s',
-        'Claude Code-credentials',
-        '-a',
-        process.env.USER || process.env.USERNAME || 'user'
       ]
     ])
   })
+
+  it('routes every app-managed credential mutation to a fork-only service', async () => {
+    const configDir = '/tmp/orca-kyle-claude-login-test'
+    execFileMock.mockImplementation((_file, _args, _options, callback) => {
+      invokeExecFileCallback(callback, null, '', '')
+      return null as never
+    })
+
+    await writeActiveClaudeKeychainCredentials('credentials-json', configDir)
+    await writeActiveClaudeKeychainCredentialsForRuntime('credentials-json', configDir)
+    await deleteActiveClaudeKeychainCredentials(configDir)
+    await writeManagedClaudeKeychainCredentials('account-id', 'credentials-json')
+    await deleteManagedClaudeKeychainCredentials('account-id')
+
+    const services = executedServices()
+    expect(services).toHaveLength(5)
+    expect(services.every((service) => service.startsWith('Orca Kyle '))).toBe(true)
+    expect(services).not.toContain('Claude Code-credentials')
+    expect(services).not.toContain('Orca Claude Code Managed Credentials')
+  })
+
+  it('reads managed credentials from the fork-only service', async () => {
+    execFileMock.mockImplementationOnce((_file, _args, _options, callback) => {
+      invokeExecFileCallback(callback, null, 'credentials-json\n', '')
+      return null as never
+    })
+
+    await expect(readManagedClaudeKeychainCredentials('account-id')).resolves.toBe(
+      'credentials-json'
+    )
+    expect(executedServices()).toEqual(['Orca Kyle Claude Code Managed Credentials'])
+  })
 })
+
+function executedServices(): string[] {
+  return execFileMock.mock.calls.flatMap((call) => {
+    const args = call[1]
+    if (!Array.isArray(args)) {
+      return []
+    }
+    const serviceIndex = args.indexOf('-s')
+    const service = args[serviceIndex + 1]
+    return typeof service === 'string' ? [service] : []
+  })
+}

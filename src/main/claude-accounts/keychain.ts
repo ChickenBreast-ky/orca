@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { PRODUCT_IDENTITY } from '../../shared/product-identity'
 
-const ACTIVE_CLAUDE_SERVICE = 'Claude Code-credentials'
-const ORCA_CLAUDE_SERVICE = 'Orca Claude Code Managed Credentials'
+const ACTIVE_CLAUDE_SERVICE = PRODUCT_IDENTITY.claudeCredentialsService
+const ORCA_CLAUDE_SERVICE = PRODUCT_IDENTITY.managedClaudeCredentialsService
 const KEYCHAIN_COMMAND_TIMEOUT_MS = 3_000
 
 type SecurityCommandResult = {
@@ -42,9 +43,6 @@ export async function writeActiveClaudeKeychainCredentialsForRuntime(
   const user = getKeychainUser()
   const scopedService = getActiveClaudeService(configDir)
   await writeKeychainPassword(scopedService, user, contents)
-  if (scopedService !== ACTIVE_CLAUDE_SERVICE) {
-    await writeKeychainPassword(ACTIVE_CLAUDE_SERVICE, user, contents)
-  }
 }
 
 export async function deleteActiveClaudeKeychainCredentials(configDir?: string): Promise<void> {
@@ -93,10 +91,7 @@ function getActiveClaudeService(configDir?: string): string {
 }
 
 function getActiveClaudeServices(configDir?: string): string[] {
-  const scopedService = getActiveClaudeService(configDir)
-  return scopedService === ACTIVE_CLAUDE_SERVICE
-    ? [ACTIVE_CLAUDE_SERVICE]
-    : [scopedService, ACTIVE_CLAUDE_SERVICE]
+  return [getActiveClaudeService(configDir)]
 }
 
 async function readKeychainPassword(service: string, account: string): Promise<string | null> {

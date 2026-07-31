@@ -1,12 +1,12 @@
 {
-  "name": "orca",
+  "name": "orca-kyle",
   "version": "1.4.163-rc.1",
   "description": "Next-gen IDE for parallel agentic development",
   "homepage": "https://github.com/stablyai/orca",
   "author": "stablyai",
   "bin": {
-    "orca": "./out/cli/index.js",
-    "orca-dev": "./config/scripts/orca-dev.mjs"
+    "orca-kyle": "./out/cli/index.js",
+    "orca-kyle-dev": "./config/scripts/orca-dev.mjs"
   },
   "main": "./out/main/index.js",
   "scripts": {

@@ -213,14 +213,14 @@ describe('openComputerUsePermissions', () => {
     vi.mocked(readFile)
       .mockResolvedValueOnce('{"accessibility":"granted","screenshots":"granted"}')
       .mockResolvedValueOnce('{"accessibility":"not-granted","screenshots":"not-granted"}')
-    vi.mocked(execFileSync).mockReturnValueOnce('com.example.orca.computer-use\n')
+    vi.mocked(execFileSync).mockReturnValueOnce('com.stablyai.orca.computer-use\n')
     vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<typeof spawnSync>)
 
     await expect(resetComputerUsePermissions()).resolves.toEqual({
       platform: 'darwin',
       helperAppPath: '/Applications/Orca Computer Use.app',
       helperUnavailableReason: null,
-      bundleId: 'com.example.orca.computer-use',
+      bundleId: 'com.chickenbreastky.orca-kyle.computer-use',
       permissions: [
         { id: 'accessibility', status: 'not-granted' },
         { id: 'screenshots', status: 'not-granted' }
@@ -233,12 +233,12 @@ describe('openComputerUsePermissions', () => {
     )
     expect(spawnSync).toHaveBeenCalledWith(
       '/usr/bin/tccutil',
-      ['reset', 'Accessibility', 'com.example.orca.computer-use'],
+      ['reset', 'Accessibility', 'com.chickenbreastky.orca-kyle.computer-use'],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
     )
     expect(spawnSync).toHaveBeenCalledWith(
       '/usr/bin/tccutil',
-      ['reset', 'ScreenCapture', 'com.example.orca.computer-use'],
+      ['reset', 'ScreenCapture', 'com.chickenbreastky.orca-kyle.computer-use'],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
     )
   })
