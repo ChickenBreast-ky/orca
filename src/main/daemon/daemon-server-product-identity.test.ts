@@ -18,7 +18,7 @@ describe('DaemonServer product identity', () => {
   let server: DaemonServer
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'daemon-server-product-identity-test-'))
+    dir = mkdtempSync(join(tmpdir(), 'ds-pid-test-'))
     socketPath = getDaemonSocketPath(dir)
     tokenPath = join(dir, 'test.token')
   })
