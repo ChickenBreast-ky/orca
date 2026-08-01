@@ -17,7 +17,7 @@ const ENV_SCHEMA = z.object({
   ORCA_KYLE_QA_USER_DATA_PATH: z.string().optional()
 })
 
-const MAX_QA_FILE_IDENTITIES = 10_000
+const MAX_QA_FILE_IDENTITIES = 50_000
 
 export class OrcaKyleDataPathIsolationError extends Error {
   readonly name = 'OrcaKyleDataPathIsolationError'
@@ -166,7 +166,10 @@ function identityKey(identity: FileIdentity): string {
   return `${identity.device}:${identity.inode}`
 }
 
-function collectRegularFileIdentities(rootPath: string): Set<string> {
+function collectRegularFileIdentities(
+  rootPath: string,
+  options: { readonly rejectSymbolicLinks: boolean }
+): Set<string> {
   const identities = new Set<string>()
   const pendingPaths = [rootPath]
   while (pendingPaths.length > 0) {
@@ -177,6 +180,9 @@ function collectRegularFileIdentities(rootPath: string): Set<string> {
     for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
       const entryPath = join(currentPath, entry.name)
       if (entry.isSymbolicLink()) {
+        if (!options.rejectSymbolicLinks) {
+          continue
+        }
         throw new OrcaKyleDataPathIsolationError('QA candidate contains a symbolic link')
       }
       if (entry.isDirectory()) {
@@ -205,8 +211,12 @@ function assertQaCandidateDoesNotShareOfficialFiles(
   if (!existsSync(officialUserDataPath)) {
     return
   }
-  const officialIdentities = collectRegularFileIdentities(officialUserDataPath)
-  const candidateIdentities = collectRegularFileIdentities(candidatePath)
+  const officialIdentities = collectRegularFileIdentities(officialUserDataPath, {
+    rejectSymbolicLinks: false
+  })
+  const candidateIdentities = collectRegularFileIdentities(candidatePath, {
+    rejectSymbolicLinks: true
+  })
   for (const candidateIdentity of candidateIdentities) {
     if (officialIdentities.has(candidateIdentity)) {
       throw new OrcaKyleDataPathIsolationError(
