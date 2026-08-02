@@ -2183,6 +2183,10 @@ describe('orchestration RPC methods', () => {
         title: `worker-${task.id}`,
         surfaceOwner: false
       })
+      expect(runtime.waitForTerminal).toHaveBeenCalledWith(
+        'term_worker',
+        expect.objectContaining({ minimumWaitMs: 10_000 })
+      )
       expect(runtime.sendTerminalAgentPrompt).toHaveBeenCalledWith(
         'term_worker',
         expect.stringContaining('--dispatch-capability dcap_')

@@ -21,6 +21,8 @@ import {
 } from './orchestration-worker-setup-gate'
 import { failWorkerStartWithReceipt } from './orchestration-worker-start-receipt'
 
+const CODEX_WORKER_START_DISCOVERY_MS = 10_000
+
 export const ORCHESTRATION_WORKER_START_METHODS: RpcMethod[] = [
   defineMethod({
     name: 'orchestration.workerStart',
@@ -223,7 +225,9 @@ export const ORCHESTRATION_WORKER_START_METHODS: RpcMethod[] = [
         failedStage = 'agent_readiness'
         const wait = await runtime.waitForTerminal(terminalHandle, {
           condition: 'tui-idle',
-          timeoutMs: params.timeoutMs ?? 60_000
+          timeoutMs: params.timeoutMs ?? 60_000,
+          minimumWaitMs:
+            !params.terminal && agent === 'codex' ? CODEX_WORKER_START_DISCOVERY_MS : undefined
         })
         persistWorkerSetupWaitOutcome({ ...setupStage, wait })
         if (!wait.satisfied) {
