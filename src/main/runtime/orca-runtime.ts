@@ -16264,7 +16264,7 @@ export class OrcaRuntimeService {
       if (
         condition === 'tui-idle' &&
         (this.getAdoptedPtyExplicitIdleStatus(pty.pty) === 'idle' ||
-          isKnownReadyPromptPreview(ptyWaitText))
+          isKnownReadyPromptPreview(ptyWaitText, pty.pty.lastOutputAt))
       ) {
         return buildPtyTerminalWaitResult(handle, condition, pty.pty)
       }
@@ -16322,7 +16322,7 @@ export class OrcaRuntimeService {
             this.resolveWaiter(waiter, buildPtyTerminalWaitResult(handle, condition, live.pty))
           } else if (
             this.getAdoptedPtyExplicitIdleStatus(live.pty) === 'idle' ||
-            isKnownReadyPromptPreview(livePtyWaitText)
+            isKnownReadyPromptPreview(livePtyWaitText, live.pty.lastOutputAt)
           ) {
             this.resolveWaiter(waiter, buildPtyTerminalWaitResult(handle, condition, live.pty))
           } else {
@@ -16355,7 +16355,7 @@ export class OrcaRuntimeService {
       const fastPathTitle = leaf.paneTitle ?? this.tabs.get(leaf.tabId)?.title
       if (
         (fastPathTitle && detectExplicitIdleStatusFromTitle(fastPathTitle) === 'idle') ||
-        isKnownReadyPromptPreview(leafWaitText)
+        isKnownReadyPromptPreview(leafWaitText, leaf.lastOutputAt)
       ) {
         return buildTerminalWaitResult(handle, condition, leaf)
       }
@@ -16433,7 +16433,7 @@ export class OrcaRuntimeService {
             const fastPathTitle = live.leaf.paneTitle ?? this.tabs.get(live.leaf.tabId)?.title
             if (
               (fastPathTitle && detectExplicitIdleStatusFromTitle(fastPathTitle) === 'idle') ||
-              isKnownReadyPromptPreview(liveLeafWaitText)
+              isKnownReadyPromptPreview(liveLeafWaitText, live.leaf.lastOutputAt)
             ) {
               this.resolveWaiter(waiter, buildTerminalWaitResult(handle, condition, live.leaf))
             } else {
@@ -29948,7 +29948,7 @@ export class OrcaRuntimeService {
           )
           return
         }
-        if (isKnownReadyPromptPreview(leafWaitText)) {
+        if (isKnownReadyPromptPreview(leafWaitText, leaf.lastOutputAt)) {
           if (waiter.pollInterval) {
             clearInterval(waiter.pollInterval)
             waiter.pollInterval = null
@@ -30019,7 +30019,7 @@ export class OrcaRuntimeService {
         // Why: adopted background PTY handles use their live xterm title as the same readiness signal as leaf handles.
         if (
           this.getAdoptedPtyExplicitIdleStatus(pty) === 'idle' ||
-          isKnownReadyPromptPreview(ptyWaitText)
+          isKnownReadyPromptPreview(ptyWaitText, pty.lastOutputAt)
         ) {
           if (waiter.pollInterval) {
             clearInterval(waiter.pollInterval)
@@ -34579,10 +34579,20 @@ function detectExplicitIdleStatusFromTitle(title: string): AgentStatus | null {
   return null
 }
 
-function isKnownReadyPromptPreview(preview: string): boolean {
+function isKnownReadyPromptPreview(preview: string, lastOutputAt?: number | null): boolean {
   const normalized = preview.toLowerCase()
   const readyIndex = findKnownReadyPromptIndex(normalized)
   if (readyIndex === null) {
+    return false
+  }
+  const codexReadyIndex = findCodexReadyPromptIndex(normalized)
+  const codexMcpStartupIndex = normalized.lastIndexOf('starting mcp servers')
+  if (
+    codexReadyIndex === readyIndex &&
+    codexMcpStartupIndex > codexReadyIndex &&
+    typeof lastOutputAt === 'number' &&
+    Date.now() - lastOutputAt < TUI_IDLE_QUIESCENCE_MS
+  ) {
     return false
   }
   const blockedSignal = findTerminalWaitBlockedSignal(normalized)

@@ -14129,6 +14129,85 @@ describe('OrcaRuntimeService', () => {
     })
   })
 
+  it('does not resolve tui-idle while Codex is still starting MCP servers', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => null
+      })
+      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+      runtime.onPtyData(
+        'pty-bg',
+        [
+          ' >_ OpenAI Codex (v0.146.0)\n',
+          ' model:       gpt-5.6-sol max   /model to change\n',
+          ' directory:   ~/Dev/Rottie-terminal-output-flow-control\n',
+          ' Starting MCP servers (5/7): codex_apps, context7 (1s  esc to interrupt)\n'
+        ].join(''),
+        Date.now()
+      )
+
+      const wait = runtime.waitForTerminal(handle, {
+        condition: 'tui-idle',
+        timeoutMs: 1_000
+      })
+      const timeout = expect(wait).rejects.toThrow('timeout')
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      await timeout
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps polling through active Codex MCP startup and resolves after quiescence', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => null
+      })
+      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+      const startupScreen = [
+        ' >_ OpenAI Codex (v0.146.0)\n',
+        ' model:       gpt-5.6-sol max   /model to change\n',
+        ' directory:   ~/Dev/Rottie-terminal-output-flow-control\n',
+        ' Starting MCP servers (5/7): codex_apps, context7 (1s  esc to interrupt)\n'
+      ].join('')
+      runtime.onPtyData('pty-bg', startupScreen, Date.now())
+
+      let settled = false
+      const wait = runtime
+        .waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 10_000 })
+        .then((result) => {
+          settled = true
+          return result
+        })
+
+      await vi.advanceTimersByTimeAsync(1_900)
+      runtime.onPtyData('pty-bg', ' Starting MCP servers (6/7)\n', Date.now())
+      await vi.advanceTimersByTimeAsync(2_100)
+      expect(settled).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      await expect(wait).resolves.toMatchObject({
+        handle,
+        condition: 'tui-idle',
+        satisfied: true,
+        status: 'running'
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('resolves tui-idle from an Antigravity ready prompt preview', async () => {
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
@@ -14257,7 +14336,7 @@ describe('OrcaRuntimeService', () => {
     })
   })
 
-  it('resolves tui-idle from a Codex ready prompt even when stale startup lines remain', async () => {
+  it('resolves tui-idle from a quiet Codex ready prompt when stale startup lines remain', async () => {
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
       spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
@@ -14281,7 +14360,7 @@ describe('OrcaRuntimeService', () => {
           'Run /review on my current changes gpt-5.5 high ~/orca/workspaces/orca/cli-debug\n'
         ].join('')
       ].join(''),
-      Date.now()
+      Date.now() - 3_001
     )
 
     await expect(
