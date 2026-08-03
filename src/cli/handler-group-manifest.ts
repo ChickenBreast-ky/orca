@@ -122,6 +122,11 @@ export const HANDLER_GROUPS: readonly HandlerGroup[] = [
     load: async () => (await import('./handlers/orchestration.js')).ORCHESTRATION_HANDLERS
   },
   {
+    name: 'roster',
+    keys: ['roster list', 'roster show', 'roster resolve', 'roster retire', 'roster summary'],
+    load: async () => (await import('./handlers/roster.js')).ROSTER_HANDLERS
+  },
+  {
     name: 'emulator',
     keys: [
       'emulator list',

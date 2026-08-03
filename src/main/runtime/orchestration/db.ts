@@ -35,7 +35,10 @@ import type {
   FederatedDispatchRow,
   RemoteDispatchAttachmentRow,
   FederationRelayDirection,
-  FederationRelayItemRow
+  FederationRelayItemRow,
+  RoleRosterStatus,
+  RoleRosterKind,
+  RoleRosterRow
 } from './types'
 import { buildOrchestrationTaskDisplayMetadata } from '../../../shared/orchestration-task-display'
 import { ORCHESTRATION_LEGACY_RUN_ID } from '../../../shared/orchestration-rpc-contract'
@@ -46,7 +49,7 @@ import { ORCHESTRATION_RUN_PAGE_LIMIT } from '../../../shared/orchestration-run-
 import { ORCHESTRATION_CONTRACT_VERSION } from '../../../shared/protocol-version'
 
 // Why: leaf UUID is the remint-stable pane identity (tab half changes on break-out); exact match covers legacy/unparseable keys.
-function isEquivalentPaneKey(a: string, b: string): boolean {
+export function isEquivalentPaneKey(a: string, b: string): boolean {
   if (a === b) {
     return true
   }
@@ -85,6 +88,8 @@ export type {
   WorkerDispatchRow,
   WorkerDispatchState
 }
+
+export type { RoleRosterStatus, RoleRosterKind, RoleRosterRow }
 
 function generateId(prefix: string): string {
   return `${prefix}_${randomBytes(6).toString('hex')}`
@@ -249,8 +254,8 @@ type RunListCursor = {
   id: string
 }
 
-// Schema versions: v2 'heartbeat'+last_heartbeat_at, v3 delivered_at, v4 task-creator terminal, v5 task_title/display_name, v6 pane identity, v7 lightweight Runs, v8 crash-safe Run deliveries, v9 durable question threads, v10 Dispatch capabilities, v11 durable mutation receipts, v12 composed worker state, v18 post-v6 version-skew repair, v19 adopted legacy Runs and compatibility receipts, v20 legacy question backfill, v21 legacy scheduler-loss provenance, v22 dispatch assignee lookup.
-const SCHEMA_VERSION = 22
+// Schema versions: v2 'heartbeat'+last_heartbeat_at, v3 delivered_at, v4 task-creator terminal, v5 task_title/display_name, v6 pane identity, v7 lightweight Runs, v8 crash-safe Run deliveries, v9 durable question threads, v10 Dispatch capabilities, v11 durable mutation receipts, v12 composed worker state, v18 post-v6 version-skew repair, v19 adopted legacy Runs and compatibility receipts, v20 legacy question backfill, v21 legacy scheduler-loss provenance, v22 dispatch assignee lookup, v23 role roster.
+const SCHEMA_VERSION = 24
 
 function hardenOrchestrationDatabaseFiles(dbPath: string | ':memory:'): void {
   if (dbPath === ':memory:' || process.platform === 'win32') {
@@ -523,6 +528,10 @@ export class OrchestrationDb {
         scheduler_lost_at   TEXT
       );
     `)
+    // Why: role_roster is created only by the v23 migration block so the
+    // migration test genuinely exercises it; fresh DBs run migrate right after
+    // createTables in the constructor, and user_version reaches 23 atomically
+    // only after the table exists.
     this.createUndeliveredInboxIndexIfPossible()
   }
 
@@ -876,6 +885,86 @@ export class OrchestrationDb {
         this.db.exec(`
           CREATE INDEX IF NOT EXISTS idx_dispatch_assignee_handle
             ON dispatch_contexts(assignee_handle);
+        `)
+      }
+      if (current < 23) {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS role_roster (
+            id                  TEXT PRIMARY KEY,
+            terminal_id         TEXT,
+            pane                TEXT NOT NULL,
+            worktree            TEXT,
+            project             TEXT NOT NULL,
+            board               TEXT NOT NULL,
+            role                TEXT NOT NULL,
+            run_id              TEXT NOT NULL,
+            parent_role         TEXT,
+            reports_to          TEXT,
+            kind                TEXT NOT NULL DEFAULT 'worker'
+              CHECK(kind IN ('coordinator', 'worker', 'supervisor')),
+            model               TEXT,
+            status              TEXT NOT NULL DEFAULT 'active'
+              CHECK(status IN ('active', 'inactive')),
+            title               TEXT,
+            can_dispatch        INTEGER NOT NULL DEFAULT 0,
+            can_commit          INTEGER NOT NULL DEFAULT 0,
+            can_message_super   INTEGER NOT NULL DEFAULT 0,
+            created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+            last_seen_handle    TEXT
+          );
+          CREATE INDEX IF NOT EXISTS idx_role_roster_identity
+            ON role_roster(project, board, role, run_id, status);
+          CREATE INDEX IF NOT EXISTS idx_role_roster_pane ON role_roster(pane);
+        `)
+      }
+      if (current < 24) {
+        // Why: SQLite cannot widen a CHECK constraint in place, so the retired
+        // status needs a table rebuild. Columns are listed explicitly so the
+        // copy carries every existing row — including stable pane, run_id, and
+        // the last_seen_handle cache — instead of relying on column order.
+        this.db.exec(`
+          CREATE TABLE role_roster_retire_migration (
+            id                  TEXT PRIMARY KEY,
+            terminal_id         TEXT,
+            pane                TEXT NOT NULL,
+            worktree            TEXT,
+            project             TEXT NOT NULL,
+            board               TEXT NOT NULL,
+            role                TEXT NOT NULL,
+            run_id              TEXT NOT NULL,
+            parent_role         TEXT,
+            reports_to          TEXT,
+            kind                TEXT NOT NULL DEFAULT 'worker'
+              CHECK(kind IN ('coordinator', 'worker', 'supervisor')),
+            model               TEXT,
+            status              TEXT NOT NULL DEFAULT 'active'
+              CHECK(status IN ('active', 'inactive', 'retired')),
+            title               TEXT,
+            can_dispatch        INTEGER NOT NULL DEFAULT 0,
+            can_commit          INTEGER NOT NULL DEFAULT 0,
+            can_message_super   INTEGER NOT NULL DEFAULT 0,
+            created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+            last_seen_handle    TEXT
+          );
+          INSERT INTO role_roster_retire_migration (
+            id, terminal_id, pane, worktree, project, board, role, run_id,
+            parent_role, reports_to, kind, model, status, title,
+            can_dispatch, can_commit, can_message_super,
+            created_at, updated_at, last_seen_handle
+          )
+          SELECT
+            id, terminal_id, pane, worktree, project, board, role, run_id,
+            parent_role, reports_to, kind, model, status, title,
+            can_dispatch, can_commit, can_message_super,
+            created_at, updated_at, last_seen_handle
+          FROM role_roster;
+          DROP TABLE role_roster;
+          ALTER TABLE role_roster_retire_migration RENAME TO role_roster;
+          CREATE INDEX IF NOT EXISTS idx_role_roster_identity
+            ON role_roster(project, board, role, run_id, status);
+          CREATE INDEX IF NOT EXISTS idx_role_roster_pane ON role_roster(pane);
         `)
       }
       this.createUndeliveredInboxIndexIfPossible()
@@ -5967,6 +6056,432 @@ export class OrchestrationDb {
     return [...new Set(allHandles.map((r) => r.to_handle))].filter((h) => !busyHandles.has(h))
   }
 
+  // ── Role Roster ──
+
+  getRoleRoster(id: string): RoleRosterRow | undefined {
+    return this.db.prepare('SELECT * FROM role_roster WHERE id = ?').get(id) as
+      | RoleRosterRow
+      | undefined
+  }
+
+  listRoleRosters(filter?: {
+    status?: RoleRosterStatus
+    runId?: string
+    project?: string
+    board?: string
+    role?: string
+  }): RoleRosterRow[] {
+    const clauses: string[] = []
+    const params: Database.BindValue[] = []
+    if (filter?.project) {
+      clauses.push('project = ?')
+      params.push(filter.project)
+    }
+    if (filter?.board) {
+      clauses.push('board = ?')
+      params.push(filter.board)
+    }
+    if (filter?.runId) {
+      clauses.push('run_id = ?')
+      params.push(filter.runId)
+    }
+    if (filter?.role) {
+      clauses.push('role = ?')
+      params.push(filter.role)
+    }
+    if (filter?.status) {
+      clauses.push('status = ?')
+      params.push(filter.status)
+    }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
+    return this.db
+      .prepare(`SELECT * FROM role_roster ${where} ORDER BY created_at`)
+      .all(...params) as RoleRosterRow[]
+  }
+
+  createRoleRoster(params: {
+    pane: string
+    project: string
+    board: string
+    role: string
+    runId: string
+    terminalId?: string
+    worktree?: string
+    parentRole?: string
+    reportsTo?: string
+    kind?: RoleRosterKind
+    model?: string
+    title?: string
+    canDispatch?: boolean
+    canCommit?: boolean
+    canMessageSuper?: boolean
+    lastSeenHandle?: string
+  }): RoleRosterRow {
+    const id = generateId('roster')
+    this.db
+      .prepare(
+        `INSERT INTO role_roster (
+           id, terminal_id, pane, worktree, project, board, role, run_id,
+           parent_role, reports_to, kind, model, status, title,
+           can_dispatch, can_commit, can_message_super, last_seen_handle
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
+      )
+      .run(
+        id,
+        params.terminalId ?? null,
+        params.pane,
+        params.worktree ?? null,
+        params.project,
+        params.board,
+        params.role,
+        params.runId,
+        params.parentRole ?? null,
+        params.reportsTo ?? null,
+        params.kind ?? 'worker',
+        params.model ?? null,
+        params.title ?? null,
+        params.canDispatch ? 1 : 0,
+        params.canCommit ? 1 : 0,
+        params.canMessageSuper ? 1 : 0,
+        params.lastSeenHandle ?? null
+      )
+    return this.getRoleRoster(id) as RoleRosterRow
+  }
+
+  // Why: creation retries (CLI retry, remote reconcileExisting adopt, same clientMutationId in flight) must not stack duplicate active rows for one identity. Same identity+equivalent pane reuses the row and refreshes the handle cache; a different live pane already holding the identity is rejected instead of silently creating role_roster_ambiguous.
+  assertRoleRosterIdentityAvailable(params: {
+    project: string
+    board: string
+    role: string
+    runId: string
+    pane: string
+  }): void {
+    const actives = this.listRoleRosters({
+      project: params.project,
+      board: params.board,
+      role: params.role,
+      runId: params.runId,
+      status: 'active'
+    })
+    const samePane = actives.filter((row) => isEquivalentPaneKey(row.pane, params.pane))
+    if (samePane.length > 1) {
+      throw new OrchestrationError(
+        'role_roster_ambiguous',
+        `Multiple active role roster records match ${params.project}/${params.board}/${params.role}/${params.pane}/${params.runId}.`
+      )
+    }
+    if (samePane.length === 0 && actives.length > 0) {
+      throw new OrchestrationError(
+        'role_roster_conflict',
+        `Role ${params.role} is already active on pane ${actives[0].pane} for ${params.project}/${params.board}/${params.runId}; refusing a second active record.`
+      )
+    }
+  }
+
+  ensureActiveRoleRoster(params: {
+    pane: string
+    project: string
+    board: string
+    role: string
+    runId: string
+    terminalId?: string
+    worktree?: string
+    parentRole?: string
+    reportsTo?: string
+    kind?: RoleRosterKind
+    model?: string
+    title?: string
+    canDispatch?: boolean
+    canCommit?: boolean
+    canMessageSuper?: boolean
+    lastSeenHandle?: string
+  }): RoleRosterRow {
+    const actives = this.listRoleRosters({
+      project: params.project,
+      board: params.board,
+      role: params.role,
+      runId: params.runId,
+      status: 'active'
+    })
+    const samePane = actives.filter((row) => isEquivalentPaneKey(row.pane, params.pane))
+    if (samePane.length > 1) {
+      throw new OrchestrationError(
+        'role_roster_ambiguous',
+        `Multiple active role roster records match ${params.project}/${params.board}/${params.role}/${params.pane}/${params.runId}.`
+      )
+    }
+    if (samePane.length === 1) {
+      const existing = samePane[0]
+      if (params.lastSeenHandle) {
+        this.refreshRoleRosterHandle(existing.id, params.lastSeenHandle)
+      }
+      if (params.terminalId) {
+        this.updateRoleRoster(existing.id, { terminalId: params.terminalId })
+      }
+      return this.getRoleRoster(existing.id) as RoleRosterRow
+    }
+    this.assertRoleRosterIdentityAvailable(params)
+    return this.createRoleRoster(params)
+  }
+
+  // Why: identity fields (pane/project/board/role/run_id) are immutable — they ARE the record; only metadata and permissions mutate.
+  updateRoleRoster(
+    id: string,
+    params: {
+      terminalId?: string
+      worktree?: string
+      parentRole?: string
+      reportsTo?: string
+      kind?: RoleRosterKind
+      model?: string
+      title?: string
+      canDispatch?: boolean
+      canCommit?: boolean
+      canMessageSuper?: boolean
+    }
+  ): RoleRosterRow | undefined {
+    if (!this.getRoleRoster(id)) {
+      return undefined
+    }
+    const sets: string[] = []
+    const values: Database.BindValue[] = []
+    const push = (column: string, value: Database.BindValue): void => {
+      sets.push(`${column} = ?`)
+      values.push(value)
+    }
+    if (params.terminalId !== undefined) {
+      push('terminal_id', params.terminalId)
+    }
+    if (params.worktree !== undefined) {
+      push('worktree', params.worktree)
+    }
+    if (params.parentRole !== undefined) {
+      push('parent_role', params.parentRole)
+    }
+    if (params.reportsTo !== undefined) {
+      push('reports_to', params.reportsTo)
+    }
+    if (params.kind !== undefined) {
+      push('kind', params.kind)
+    }
+    if (params.model !== undefined) {
+      push('model', params.model)
+    }
+    if (params.title !== undefined) {
+      push('title', params.title)
+    }
+    if (params.canDispatch !== undefined) {
+      push('can_dispatch', params.canDispatch ? 1 : 0)
+    }
+    if (params.canCommit !== undefined) {
+      push('can_commit', params.canCommit ? 1 : 0)
+    }
+    if (params.canMessageSuper !== undefined) {
+      push('can_message_super', params.canMessageSuper ? 1 : 0)
+    }
+    if (sets.length === 0) {
+      return this.getRoleRoster(id)
+    }
+    values.push(id)
+    this.db
+      .prepare(
+        `UPDATE role_roster SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`
+      )
+      .run(...values)
+    return this.getRoleRoster(id)
+  }
+
+  deactivateRoleRoster(id: string): RoleRosterRow | undefined {
+    if (!this.getRoleRoster(id)) {
+      return undefined
+    }
+    this.db
+      .prepare(
+        "UPDATE role_roster SET status = 'inactive', updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(id)
+    return this.getRoleRoster(id)
+  }
+
+  // Why: card 8 — retiring a card-scoped session settles the record without
+  // erasing it. Only status moves; pane, run_id, and last_seen_handle stay so
+  // history keeps pointing at who held the role, and no message is touched.
+  retireRoleRoster(id: string): RoleRosterRow | undefined {
+    if (!this.getRoleRoster(id)) {
+      return undefined
+    }
+    this.db
+      .prepare(
+        "UPDATE role_roster SET status = 'retired', updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(id)
+    return this.getRoleRoster(id)
+  }
+
+  // Why: card 8 fix — worker_done_recorded must only accept a lifecycle-
+  // reconciled, authority-verified completion. A rejected or unauthorized
+  // worker_done never reaches settlement, so it can never produce the
+  // provenance marker that this method requires.
+  findOfficialWorkerDoneForTask(params: { runId: string; taskId: string }): MessageRow[] {
+    const task = this.getTask(params.taskId)
+    if (!task || task.run_id !== params.runId) {
+      return []
+    }
+    // Primary: lifecycle reconciliation writes provenance='worker_report' into
+    // task.result only after full dispatch + assignee-authority validation
+    // succeeds. A rejected worker_done (wrong dispatch, wrong pane, missing
+    // outcome, _orcaLifecycleRejection) is never settled and never gets here.
+    const settled = this.parseWorkerReportSettlement(task.result)
+    if (!settled || typeof settled.messageId !== 'string') {
+      return []
+    }
+    const message = this.getMessageById(settled.messageId)
+    if (!message || !this.isOfficialWorkerDoneMessage(message, params.taskId)) {
+      return []
+    }
+    return [message]
+  }
+
+  // Why: parses the settled result JSON that only settleWorkerReport writes.
+  private parseWorkerReportSettlement(
+    result: string | null
+  ): { provenance: string; messageId?: unknown } | null {
+    if (!result) {
+      return null
+    }
+    try {
+      const parsed: unknown = JSON.parse(result)
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        (parsed as Record<string, unknown>).provenance === 'worker_report'
+      ) {
+        return parsed as { provenance: string; messageId?: unknown }
+      }
+    } catch {
+      // non-JSON or unrelated result
+    }
+    return null
+  }
+
+  // Why: defense in depth — re-validate the settled message row so a later
+  // rejection marker, dispatchId/outcome drift, or pane-authority break still
+  // blocks retire even if task.result was not reverted.
+  private isOfficialWorkerDoneMessage(msg: MessageRow, taskId: string): boolean {
+    if (msg.type !== 'worker_done') {
+      return false
+    }
+    if (hasLifecycleRejectionMarker(msg.payload)) {
+      return false
+    }
+    let payload: Record<string, unknown> = {}
+    try {
+      const value: unknown = msg.payload ? JSON.parse(msg.payload) : {}
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        payload = value as Record<string, unknown>
+      } else {
+        return false
+      }
+    } catch {
+      return false
+    }
+    if (payload.taskId !== taskId) {
+      return false
+    }
+    const dispatchId = payload.dispatchId
+    if (typeof dispatchId !== 'string' || dispatchId.length === 0) {
+      return false
+    }
+    const outcome = payload.outcome
+    if (outcome !== 'succeeded' && outcome !== 'failed') {
+      return false
+    }
+    const dispatch = this.getDispatchContextById(dispatchId)
+    if (!dispatch || dispatch.task_id !== taskId) {
+      return false
+    }
+    // Assignee pane/handle authority — mirrors lifecycle-reconciliation.
+    if (dispatch.assignee_pane_key) {
+      if (
+        !msg.sender_pane_key ||
+        !isEquivalentPaneKey(dispatch.assignee_pane_key, msg.sender_pane_key)
+      ) {
+        return false
+      }
+    } else if (dispatch.assignee_handle !== msg.from_handle) {
+      return false
+    }
+    return true
+  }
+
+  // Why: only the Orca runtime pane-permission resolver calls this — companion/CLI never refresh handles.
+  refreshRoleRosterHandle(id: string, handle: string): RoleRosterRow | undefined {
+    const existing = this.getRoleRoster(id)
+    if (!existing || existing.status !== 'active') {
+      return undefined
+    }
+    this.db
+      .prepare(
+        "UPDATE role_roster SET last_seen_handle = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(handle, id)
+    return this.getRoleRoster(id)
+  }
+
+  // Why: role-first lookup — pick a role, then find pane candidates by project+board+role+run_id. Zero is "none", two or more active candidates is an explicit ambiguity, never auto-selected; title/handle are never selection inputs.
+  resolveActiveRoleRosterByRole(filter: {
+    project: string
+    board: string
+    role: string
+    runId: string
+  }): RoleRosterRow | undefined {
+    const candidates = this.listRoleRosters({
+      project: filter.project,
+      board: filter.board,
+      role: filter.role,
+      runId: filter.runId,
+      status: 'active'
+    })
+    if (candidates.length === 0) {
+      return undefined
+    }
+    if (candidates.length > 1) {
+      throw new OrchestrationError(
+        'role_roster_ambiguous',
+        `Multiple active role roster records match ${filter.project}/${filter.board}/${filter.role}/${filter.runId}.`
+      )
+    }
+    return candidates[0]
+  }
+
+  // Why: pane-exact variant of the role lookup for callers that already hold a stable pane; multiple active matches are an explicit ambiguity, never auto-selected.
+  resolveActiveRoleRoster(filter: {
+    project: string
+    board: string
+    role: string
+    pane: string
+    runId: string
+  }): RoleRosterRow | undefined {
+    const candidates = this.db
+      .prepare(
+        `SELECT * FROM role_roster
+         WHERE project = ? AND board = ? AND role = ? AND run_id = ? AND status = 'active'`
+      )
+      .all(filter.project, filter.board, filter.role, filter.runId) as RoleRosterRow[]
+    const matches = candidates.filter((row) => isEquivalentPaneKey(row.pane, filter.pane))
+    if (matches.length === 0) {
+      return undefined
+    }
+    if (matches.length > 1) {
+      throw new OrchestrationError(
+        'role_roster_ambiguous',
+        `Multiple active role roster records match ${filter.project}/${filter.board}/${filter.role}/${filter.pane}/${filter.runId}.`
+      )
+    }
+    return matches[0]
+  }
+
   // ── Lifecycle ──
 
   private runResetTransaction(statements: string): void {
@@ -6000,6 +6515,7 @@ export class OrchestrationDb {
       DELETE FROM tasks;
       DELETE FROM messages;
       DELETE FROM runs;
+      DELETE FROM role_roster;
       INSERT INTO runs (id, objective, home_database, consumer_generation, legacy)
         VALUES ('${LEGACY_RUN_ID}', 'Legacy orchestration state (inspect only)', 'this_database', 0, 1);
     `)
@@ -6007,6 +6523,7 @@ export class OrchestrationDb {
   }
 
   resetTasks(): void {
+    // Why: role_roster survives a task reset — live Runs/messages are preserved, so their supervisor identity must be too. resetAll remains the full wipe.
     this.runResetTransaction(`
       DELETE FROM coordinator_runs;
       DELETE FROM decision_gates;

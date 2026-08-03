@@ -298,3 +298,35 @@ export type CoordinatorRun = {
   completed_at: string | null
   scheduler_lost_at: string | null
 }
+
+// Why: role roster persists supervisor/worker identity by project+board+role+pane+run_id
+// so a reconnected handle maps back to the same record; handle is a cache, not identity.
+// Why: card 8 — a card-scoped worker/reviewer session is retired, not deleted:
+// retired keeps role + stable pane + run_id + last_seen_handle as history while
+// dropping out of every active-candidate resolution.
+export type RoleRosterStatus = 'active' | 'inactive' | 'retired'
+
+export type RoleRosterKind = 'coordinator' | 'worker' | 'supervisor'
+
+export type RoleRosterRow = {
+  id: string
+  terminal_id: string | null
+  pane: string
+  worktree: string | null
+  project: string
+  board: string
+  role: string
+  run_id: string
+  parent_role: string | null
+  reports_to: string | null
+  kind: RoleRosterKind
+  model: string | null
+  status: RoleRosterStatus
+  title: string | null
+  can_dispatch: number
+  can_commit: number
+  can_message_super: number
+  created_at: string
+  updated_at: string
+  last_seen_handle: string | null
+}
