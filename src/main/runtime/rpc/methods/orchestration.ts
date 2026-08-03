@@ -24,6 +24,17 @@ import { ORCHESTRATION_RUN_METHODS } from './orchestration-runs'
 import { ORCHESTRATION_WORKER_METHODS } from './orchestration-worker-methods'
 import { ORCHESTRATION_FEDERATION_METHODS } from './orchestration-federation-methods'
 import { OrchestrationError } from '../../orchestration/orchestration-error'
+import { resolveRoleRosterSendTarget } from '../../orchestration/role-roster-send-target'
+import {
+  isUpperReportMessage,
+  validateUpperReport,
+  type ValidatedUpperReport
+} from '../../orchestration/upper-report-validation'
+import {
+  isReverseReportMessage,
+  validateReverseReport,
+  type ValidatedReverseReport
+} from '../../orchestration/reverse-report-validation'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import type { RunRow } from '../../orchestration/types'
 import { encodeFederatedControlMessage } from '../../orchestration/federation-control-message'
@@ -85,9 +96,31 @@ const SendParams = z
     // Why: pane key is the remint-stable identity used to verify worker_done/heartbeat ownership; the from handle stays routing metadata.
     senderPaneKey: OptionalString,
     run: OptionalString,
+    // Why: card 4 — explicit role targeting. project+board+role+run is the
+    // official identity; the runtime resolves the current handle from the
+    // stable pane right before send. Never combined with a raw --to handle.
+    role: OptionalString,
+    project: OptionalString,
+    board: OptionalString,
     devMode: OptionalBoolean
   })
   .superRefine((params, ctx) => {
+    if (params.role && params.to) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Choose either a raw --to handle or --to-role with --project/--board/--run, not both.',
+        path: ['role']
+      })
+    }
+    if (params.role && (!params.project || !params.board || !params.run)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          '--to-role requires --project, --board, and --run so the role identity is official.',
+        path: ['role']
+      })
+    }
     if (
       (params.type !== 'worker_done' && params.type !== 'heartbeat') ||
       !params.to ||
@@ -326,26 +359,46 @@ function resolveMessageRun(
     senderPaneKey?: string
     to?: string
     runId?: string
+    type?: string
     payload?: string
   }
-): { run: RunRow | undefined; dispatchId: string | undefined } {
+): {
+  run: RunRow | undefined
+  dispatchId: string | undefined
+  upperReport?: ValidatedUpperReport
+  reverseReport?: ValidatedReverseReport
+} {
   const db = runtime.getOrchestrationDb()
   let dispatchId: string | undefined
+  let parsedPayload: Record<string, unknown> | undefined
   if (params.payload) {
     try {
       const payload: unknown = JSON.parse(params.payload)
-      if (
-        payload &&
-        typeof payload === 'object' &&
-        !Array.isArray(payload) &&
-        typeof (payload as { dispatchId?: unknown }).dispatchId === 'string'
-      ) {
-        dispatchId = (payload as { dispatchId: string }).dispatchId
+      if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        parsedPayload = payload as Record<string, unknown>
+        if (typeof (payload as { dispatchId?: unknown }).dispatchId === 'string') {
+          dispatchId = (payload as { dispatchId: string }).dispatchId
+        }
       }
     } catch {
       // Lifecycle validation owns malformed payload errors; routing simply cannot derive a Dispatch.
     }
   }
+  // Why: card 7 fix — a structured upper report re-proves its task+dispatch
+  // as provenance against the DB plus the sender's pane/role authority, so it
+  // may target a super Run outside the Dispatch's home Run. Forged or
+  // malformed envelopes fail closed before any routing happens.
+  const upperReport =
+    parsedPayload && isUpperReportMessage(params.type ?? 'status', parsedPayload)
+      ? validateUpperReport({ db, payload: parsedPayload, senderPaneKey: params.senderPaneKey })
+      : undefined
+  // Why: card 7 — a structured reverse report (superReply=true) re-proves
+  // the sender supervisor authority so a reply may target a different
+  // project Run via Run Delivery instead of screen injection.
+  const reverseReport =
+    parsedPayload && isReverseReportMessage(params.type ?? 'status', parsedPayload)
+      ? validateReverseReport({ db, payload: parsedPayload, senderPaneKey: params.senderPaneKey })
+      : undefined
   if (!dispatchId && params.to?.startsWith('dispatch:')) {
     dispatchId = params.to.slice('dispatch:'.length)
   }
@@ -362,26 +415,54 @@ function resolveMessageRun(
     )
   }
   const targetRunId = params.to?.startsWith('run:') ? params.to.slice('run:'.length) : undefined
+  // Why: card 7 — a reverse report forces routing to its verified
+  // targetRunId, never to the sender Run fallback. An explicit --to run:X
+  // or --run that disagrees with payload.targetRunId fails closed.
+  if (reverseReport) {
+    if (targetRunId && targetRunId !== reverseReport.targetRunId) {
+      throw new OrchestrationError(
+        'reverse_report_target_run_invalid',
+        `--to run:${targetRunId} does not match reverse report target Run ${reverseReport.targetRunId}.`
+      )
+    }
+    if (params.runId && params.runId !== reverseReport.targetRunId) {
+      throw new OrchestrationError(
+        'reverse_report_target_run_invalid',
+        `--run ${params.runId} does not match reverse report target Run ${reverseReport.targetRunId}.`
+      )
+    }
+  }
   const resolvedRunId = params.runId ?? targetRunId ?? dispatch?.run_id
-  let run = resolvedRunId ? db.getRun(resolvedRunId) : undefined
+  // Why: without this override, omitting --to and --run falls back to the
+  // sender pane Run, silently misrouting the reply to the source Run.
+  const effectiveRunId = reverseReport ? reverseReport.targetRunId : resolvedRunId
+  let run = effectiveRunId ? db.getRun(effectiveRunId) : undefined
 
-  if (!run && params.from) {
+  if (!run && params.from && !reverseReport) {
     const paneKey = params.senderPaneKey ?? runtime.getTerminalPaneKey(params.from)
     run = paneKey ? db.getCurrentRunForPane(paneKey) : undefined
   }
-  if (resolvedRunId && (!run || run.legacy === 1)) {
-    throw new OrchestrationError('run_not_found', `Run ${resolvedRunId} was not found.`)
+  if (effectiveRunId && (!run || run.legacy === 1)) {
+    throw new OrchestrationError('run_not_found', `Run ${effectiveRunId} was not found.`)
   }
   if (run && targetRunId && targetRunId !== run.id) {
     throw new OrchestrationError('run_not_found', `Run ${targetRunId} was not found.`)
   }
-  if (run && dispatch && dispatch.run_id !== run.id) {
-    throw new OrchestrationError(
-      'dispatch_run_mismatch',
-      `Dispatch ${dispatch.id} belongs to Run ${dispatch.run_id}, not ${run.id}.`
-    )
+  if (run && dispatch && dispatch.run_id !== run.id && !upperReport) {
+    // Why: reverse reports also cross Run boundaries legitimately.
+    if (!reverseReport) {
+      throw new OrchestrationError(
+        'dispatch_run_mismatch',
+        `Dispatch ${dispatch.id} belongs to Run ${dispatch.run_id}, not ${run.id}.`
+      )
+    }
   }
-  return { run, dispatchId: dispatch?.id ?? dispatchId }
+  return {
+    run,
+    dispatchId: dispatch?.id ?? dispatchId,
+    ...(upperReport ? { upperReport } : {}),
+    ...(reverseReport ? { reverseReport } : {})
+  }
 }
 
 function legacyWorkerDeliveryContract(
@@ -427,11 +508,11 @@ function interruptedAcknowledgedCheck(
   }
 }
 
-function rejectFederatedExplicitTarget(params: { to?: string; run?: string }): void {
-  if (params.to || params.run) {
+function rejectFederatedExplicitTarget(params: { to?: string; run?: string; role?: string }): void {
+  if (params.to || params.run || params.role) {
     throw new OrchestrationError(
       'invalid_argument',
-      'Federated Dispatch messages route to their Run home; omit --to and --run.'
+      'Federated Dispatch messages route to their Run home; omit --to, --run, and --to-role.'
     )
   }
 }
@@ -520,13 +601,76 @@ export const ORCHESTRATION_METHODS: RpcMethod[] = [
             : {})
         }
       }
+      // Why: role targeting resolves the single active roster record's
+      // current handle from its stable pane right before send; the cached
+      // last_seen_handle is never tried first and never retried on failure.
+      // Why: card 7 R2 — resolve routing (incl. reverse/upper report
+      // validation and --run/--to conflict checks) BEFORE role targeting so
+      // a reverse report --run mismatch fails as
+      // reverse_report_target_run_invalid, not role_roster_not_found.
       const routing = resolveMessageRun(runtime, {
         from,
         senderPaneKey,
         to: params.to,
         runId: params.run,
+        type: params.type ?? 'status',
         payload: params.payload
       })
+      let roleTarget:
+        | {
+            project: string
+            board: string
+            role: string
+            runId: string
+            pane: string
+            handle: string
+            handleRefreshed: boolean
+          }
+        | undefined
+      if (params.role) {
+        if (!params.project || !params.board || !params.run) {
+          throw new OrchestrationError(
+            'invalid_argument',
+            '--to-role requires --project, --board, and --run so the role identity is official.'
+          )
+        }
+        const target = resolveRoleRosterSendTarget({
+          db,
+          identity: {
+            project: params.project,
+            board: params.board,
+            role: params.role,
+            runId: params.run
+          },
+          resolveCurrentPaneHandle: (paneKey) => runtime.resolveTerminalPane(paneKey).handle
+        })
+        roleTarget = {
+          project: params.project,
+          board: params.board,
+          role: params.role,
+          runId: params.run,
+          pane: target.roster.pane,
+          handle: target.handle,
+          handleRefreshed: target.handleRefreshed
+        }
+      }
+      const roleTargetResult = roleTarget ? { roleTarget } : {}
+      // Why: the server stamps the verified provenance Run so a forged
+      // sourceRunId in the raw payload never survives into the super mailbox.
+      if (routing.upperReport) {
+        params.payload = JSON.stringify({
+          ...parseRemoteWorkerPayload(params.payload),
+          sourceRunId: routing.upperReport.sourceRunId
+        })
+      }
+      // Why: card 7 — stamp the verified source Run so a forged superReply
+      // provenance never survives into the project Run Delivery.
+      if (routing.reverseReport) {
+        params.payload = JSON.stringify({
+          ...parseRemoteWorkerPayload(params.payload),
+          sourceRunId: routing.reverseReport.sourceRunId
+        })
+      }
       if (
         params.type === 'worker_done' &&
         !isWorkerReportOutcome(parseRemoteWorkerPayload(params.payload).outcome)
@@ -542,12 +686,18 @@ export const ORCHESTRATION_METHODS: RpcMethod[] = [
           'Task recipients are intentionally unsupported; use run:<id> or dispatch:<id>.'
         )
       }
-      let to = params.to
+      let to = roleTarget?.handle ?? params.to
       if (
         routing.run &&
         (!to ||
           ((params.type === 'worker_done' || params.type === 'heartbeat') && routing.dispatchId))
       ) {
+        to = `run:${routing.run.id}`
+      }
+      // Why: card 7 — a reverse report must enter the project Run Delivery,
+      // not the push-on-idle terminal-handle path, even when role targeting
+      // resolved a live terminal handle.
+      if (routing.reverseReport && routing.run) {
         to = `run:${routing.run.id}`
       }
       if (!to) {
@@ -657,6 +807,8 @@ export const ORCHESTRATION_METHODS: RpcMethod[] = [
                 code: 'dispatch_capability_invalid',
                 reason: authority.reason
               }
+              // Why: no roleTarget here — an unauthorized sender must not
+              // learn the role's current runtime handle from a rejection.
             }
           }
         }
@@ -665,16 +817,16 @@ export const ORCHESTRATION_METHODS: RpcMethod[] = [
           const reconciled = reconcileLifecycleMessage(db, msg)
           // Why: a suppressed message is already read, so skip the notify that would wake a check --wait waiter to an empty result.
           if (reconciled.action === 'suppressed') {
-            return { message: msg }
+            return { message: msg, ...roleTargetResult }
           }
           if (reconciled.action === 'rejected') {
             const rejection = db.getMessageById(msg.id) ?? msg
             runtime.notifyMessageArrived(to, rejection.type)
-            return { message: rejection, lifecycle: reconciled }
+            return { message: rejection, lifecycle: reconciled, ...roleTargetResult }
           }
         }
         runtime.notifyMessageArrived(to, msg.type)
-        return { message: msg }
+        return { message: msg, ...roleTargetResult }
       }
 
       // Why: fan out one message per recipient (independent read-tracking) but share a thread_id for correlation (Section 4.5).

@@ -39,6 +39,10 @@ import {
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { isTerminalQueryReply } from '../../../../shared/terminal-query-reply'
 import {
+  RoleRosterCreateParamsSchema,
+  recordCreatedRoleRoster
+} from '../../orchestration/role-roster-creation'
+import {
   EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE,
   scanTerminalReplyQuerySequences,
   type TerminalReplyQuerySequence,
@@ -943,8 +947,51 @@ const TerminalCreateParams = z.object({
   activate: z.unknown().optional(),
   presentation: z.enum(['background', 'focused']).optional(),
   tabId: OptionalString,
-  leafId: OptionalString
+  leafId: OptionalString,
+  roleRoster: RoleRosterCreateParamsSchema.optional()
 })
+
+// Why: card 2 — a terminal created with role input leaves an official
+// role_roster record keyed by its stable pane; the handle is only the
+// last_seen_handle cache. The roster write never fails terminal.create: an
+// unresolvable pane or a failed/conflicting write is surfaced as a warning
+// log so the skip is observable instead of silent.
+function recordTerminalCreateRoleRoster(
+  runtime: OrcaRuntimeService,
+  params: z.infer<typeof TerminalCreateParams>,
+  terminalHandle: string
+): void {
+  if (!params.roleRoster) {
+    return
+  }
+  const pane = runtime.getTerminalPaneKey(terminalHandle)
+  if (!pane) {
+    console.warn('[role-roster] Skipping roster record: no resolvable pane for terminal', {
+      terminalHandle,
+      role: params.roleRoster.role,
+      project: params.roleRoster.project,
+      board: params.roleRoster.board
+    })
+    return
+  }
+  try {
+    recordCreatedRoleRoster({
+      db: runtime.getOrchestrationDb(),
+      input: params.roleRoster,
+      pane,
+      terminalHandle,
+      worktree: params.worktree,
+      title: params.title
+    })
+  } catch (error) {
+    console.warn('[role-roster] Failed to record roster for created terminal', {
+      terminalHandle,
+      pane,
+      role: params.roleRoster.role,
+      error
+    })
+  }
+}
 
 const TerminalSplit = TerminalHandle.extend({
   direction: z
@@ -1397,8 +1444,8 @@ export const TERMINAL_METHODS: RpcAnyMethod[] = [
   defineMethod({
     name: 'terminal.create',
     params: TerminalCreateParams,
-    handler: async (params, { runtime, pairedDeviceId, clientId }) => ({
-      terminal: await runtime.dedupeTerminalCreate(
+    handler: async (params, { runtime, pairedDeviceId, clientId }) => {
+      const terminal = await runtime.dedupeTerminalCreate(
         pairedDeviceId ?? clientId ?? 'local',
         params.worktree,
         params.clientMutationId,
@@ -1428,7 +1475,9 @@ export const TERMINAL_METHODS: RpcAnyMethod[] = [
             ...(preAllocatedHandle ? { preAllocatedHandle } : {})
           })
       )
-    })
+      recordTerminalCreateRoleRoster(runtime, params, terminal.handle)
+      return { terminal }
+    }
   }),
   defineMethod({
     name: 'terminal.split',

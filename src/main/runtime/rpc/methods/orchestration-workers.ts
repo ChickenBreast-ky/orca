@@ -2,6 +2,7 @@ import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import type { TuiAgent } from '../../../../shared/types'
 import { buildDispatchPreamble } from '../../orchestration/preamble'
 import { OrchestrationError } from '../../orchestration/orchestration-error'
+import { prepareWorkerRoster } from '../../orchestration/role-roster-creation'
 import { defineMethod, type RpcMethod } from '../core'
 import { startFederatedWorker } from './orchestration-federated-worker-start'
 import { assertOrchestrationWorktreeCreationSupported } from './orchestration-folder-worktree-placement'
@@ -56,6 +57,8 @@ export const ORCHESTRATION_WORKER_START_METHODS: RpcMethod[] = [
         })
       }
 
+      // Why: card 2 — roster identity is validated before any side effect (see prepareWorkerRoster).
+      const recordRoster = prepareWorkerRoster(db, params, run.id, runtime)
       const requestedWorktree = params.worktree ?? 'current'
       const createsWorktree =
         requestedWorktree === 'new-child' || requestedWorktree === 'new-top-level'
@@ -269,6 +272,8 @@ export const ORCHESTRATION_WORKER_START_METHODS: RpcMethod[] = [
           state: 'accepted'
         })
         const worker = db.markWorkerDispatchReady(started.dispatch.id, effects)
+        // Why: card 2 — the ready worker leaves an official role_roster record.
+        recordRoster?.(terminalAuthority.paneKey, terminalHandle, resolvedWorktree.id)
         monitorWorkerSetup({
           runtime,
           db,

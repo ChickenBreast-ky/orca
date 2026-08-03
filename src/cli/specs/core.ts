@@ -229,16 +229,30 @@ export const CORE_COMMAND_SPECS: CommandSpec[] = [
     path: ['terminal', 'create'],
     summary: 'Create a terminal session in the current worktree',
     usage:
-      'orca terminal create [--worktree <selector>] [--title <name>] [--command <text>] [--focus] [--json]',
-    allowedFlags: [...GLOBAL_FLAGS, 'worktree', 'command', 'title', 'focus'],
+      'orca terminal create [--worktree <selector>] [--title <name>] [--command <text>] [--focus] [--role <role> --project <project> --board <board> --run <run_id> [--parent-role <role>] [--reports-to <role>]] [--json]',
+    allowedFlags: [
+      ...GLOBAL_FLAGS,
+      'worktree',
+      'command',
+      'title',
+      'focus',
+      'role',
+      'project',
+      'board',
+      'run',
+      'parent-role',
+      'reports-to'
+    ],
     notes: [
       'Creates a visible terminal tab without switching focus when possible; falls back to a background handle if the UI cannot adopt it. Pass --focus to switch to it.',
-      'Use this, not worktree create, for a fresh agent in the current checkout.'
+      'Use this, not worktree create, for a fresh agent in the current checkout.',
+      'With --role, the new terminal is registered in the official role roster (project+board+role+pane+run identity); --project, --board, and --run are required together with it.'
     ],
     examples: [
       'orca terminal create --json',
       'orca terminal create --worktree active --command "codex" --json',
       'orca terminal create --worktree path:/projects/myapp --title "RUNNER" --command "opencode"',
+      'orca terminal create --worktree active --role supervisor --project orca --board roster --run run_abc123',
       'orca terminal create --worktree path:/projects/myapp --command "opencode" --focus'
     ]
   },

@@ -68,6 +68,14 @@ describe('orchestration federated message targeting', () => {
         from: 'term_remote_worker',
         run: 'run_explicit',
         question: 'Wrong explicit Run?'
+      }),
+      request('send_role', capability, 'orchestration.send', {
+        from: 'term_remote_worker',
+        role: 'supervisor',
+        project: 'proj',
+        board: 'board_a',
+        run: 'run_explicit',
+        subject: 'Wrong explicit role target'
       })
     ]
 
@@ -76,7 +84,8 @@ describe('orchestration federated message targeting', () => {
         ok: false,
         error: {
           code: 'invalid_argument',
-          message: 'Federated Dispatch messages route to their Run home; omit --to and --run.'
+          message:
+            'Federated Dispatch messages route to their Run home; omit --to, --run, and --to-role.'
         }
       })
     }

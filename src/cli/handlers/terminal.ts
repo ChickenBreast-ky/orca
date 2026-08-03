@@ -131,6 +131,31 @@ export const TERMINAL_HANDLERS: Record<string, CommandHandler> = {
         'Remote terminal create requires --worktree because the client cwd cannot identify a server worktree.'
       )
     }
+    // Why: role input registers the new terminal (supervisor, relay, worker)
+    // in the official role roster; without --role the other role flags are
+    // meaningless and rejected instead of silently dropped.
+    const role = getOptionalStringFlag(flags, 'role')
+    const roleRosterFlags = {
+      role,
+      project: getOptionalStringFlag(flags, 'project'),
+      board: getOptionalStringFlag(flags, 'board'),
+      runId: getOptionalStringFlag(flags, 'run'),
+      parentRole: getOptionalStringFlag(flags, 'parent-role'),
+      reportsTo: getOptionalStringFlag(flags, 'reports-to')
+    }
+    const anyRoleFlag = Object.values(roleRosterFlags).some((value) => value !== undefined)
+    if (anyRoleFlag && !role) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        '--project/--board/--run/--parent-role/--reports-to require --role.'
+      )
+    }
+    if (role && (!roleRosterFlags.project || !roleRosterFlags.board || !roleRosterFlags.runId)) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        '--role requires --project, --board, and --run so the role roster record has an official identity.'
+      )
+    }
     const command = getOptionalStringFlag(flags, 'command')
     const useRendererBackedInteractiveTerminal =
       !client.isRemote && shouldUseRendererBackedInteractiveTerminal(command)
@@ -139,6 +164,18 @@ export const TERMINAL_HANDLERS: Record<string, CommandHandler> = {
       worktree: await getBrowserWorktreeSelector(flags, cwd, client),
       command,
       title: getOptionalStringFlag(flags, 'title'),
+      ...(role
+        ? {
+            roleRoster: {
+              role,
+              project: roleRosterFlags.project,
+              board: roleRosterFlags.board,
+              runId: roleRosterFlags.runId,
+              ...(roleRosterFlags.parentRole ? { parentRole: roleRosterFlags.parentRole } : {}),
+              ...(roleRosterFlags.reportsTo ? { reportsTo: roleRosterFlags.reportsTo } : {})
+            }
+          }
+        : {}),
       // Why: interactive local agent TUIs need the renderer-backed terminal
       // path for browser-side features, but CLI creates must stay backgrounded
       // unless the caller explicitly asks for focus.

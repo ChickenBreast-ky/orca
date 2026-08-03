@@ -96,6 +96,20 @@ const STRUCTURED_RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   'answer_conflict',
   'stale_delivery',
   'waiter_exists',
+  // Why: card 7 — structured upper report rejections must reach the CLI and
+  // companion as stable fail-closed codes, not a generic runtime_error.
+  'upper_report_malformed',
+  'upper_report_dispatch_not_found',
+  'upper_report_task_mismatch',
+  'upper_report_source_run_invalid',
+  'upper_report_forbidden',
+  // Why: card 7 — structured reverse report rejections must reach the CLI
+  // as stable fail-closed codes, not a generic runtime_error.
+  'reverse_report_malformed',
+  'reverse_report_forbidden',
+  'reverse_report_source_run_invalid',
+  'reverse_report_target_run_invalid',
+  'reverse_report_same_run',
   'invalid_argument'
 ])
 

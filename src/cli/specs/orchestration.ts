@@ -45,10 +45,13 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
     path: ['orchestration', 'send'],
     summary: 'Send an inter-agent message',
     usage:
-      'orca orchestration send --subject <text> [--to <run:id|dispatch:id|legacy_handle>] [--run <run_id>] [--from <handle>] [--body <text>] [--type <type>] [--priority <level>] [--thread-id <id>] [--payload <json>] [--task-id <id>] [--dispatch-id <id>] [--outcome <succeeded|failed>] [--files-modified <csv>] [--report-path <path>] [--phase <text>] [--json]',
+      'orca orchestration send --subject <text> [--to <run:id|dispatch:id|legacy_handle>] [--to-role <role> --project <project> --board <board> --run <run_id>] [--run <run_id>] [--from <handle>] [--body <text>] [--type <type>] [--priority <level>] [--thread-id <id>] [--payload <json>] [--task-id <id>] [--dispatch-id <id>] [--outcome <succeeded|failed>] [--files-modified <csv>] [--report-path <path>] [--phase <text>] [--json]',
     allowedFlags: [
       ...GLOBAL_FLAGS,
       'to',
+      'to-role',
+      'project',
+      'board',
       'run',
       'from',
       'subject',
@@ -68,6 +71,8 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
     ],
     notes: [
       'On Windows PowerShell, quote group addresses such as --to "@all" or --to "@worktree:<id>".',
+      'Use --to-role with --project/--board/--run to target the single active roster record for a role; the current handle is resolved from its stable pane right before send. --to and --to-role cannot be combined.',
+      'Role targeting fails closed: zero or multiple active candidates, an unresolved pane, a disconnected runtime, or a handle change mid-send are explicit structured errors — a cached handle is never retried.',
       "worker_done and heartbeat are exact-Dispatch signals and cannot target groups; omit --to to use the Dispatch's Run mailbox.",
       'worker_done requires --outcome succeeded or --outcome failed.',
       'From an active Dispatch, an omitted recipient defaults to its owning Run mailbox.',

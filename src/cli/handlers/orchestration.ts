@@ -86,7 +86,19 @@ type LifecycleSendRejection = {
 }
 
 type OrchestrationSendResult =
-  | { message: { id: string }; lifecycle?: LifecycleSendRejection }
+  | {
+      message: { id: string }
+      lifecycle?: LifecycleSendRejection
+      roleTarget?: {
+        project: string
+        board: string
+        role: string
+        runId: string
+        pane: string
+        handle: string
+        handleRefreshed: boolean
+      }
+    }
   | { messages: { id: string }[]; recipients: number }
   | {
       relay: {
@@ -506,6 +518,32 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
 
   'orchestration send': async ({ flags, client, cwd, json }) => {
     const to = getOptionalStringFlag(flags, 'to')
+    const toRole = getOptionalStringFlag(flags, 'to-role')
+    if (to && toRole) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        'Choose either a raw --to handle or --to-role with --project/--board/--run, not both.'
+      )
+    }
+    if (toRole) {
+      const missing = ['project', 'board', 'run'].filter(
+        (name) => getOptionalStringFlag(flags, name) === undefined
+      )
+      if (missing.length > 0) {
+        throw new RuntimeClientError(
+          'invalid_argument',
+          `--to-role requires ${missing.map((name) => `--${name}`).join(', ')} so the role identity is official.`
+        )
+      }
+    } else if (
+      getOptionalStringFlag(flags, 'project') !== undefined ||
+      getOptionalStringFlag(flags, 'board') !== undefined
+    ) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        '--project and --board are only valid together with --to-role.'
+      )
+    }
     const type = getOptionalStringFlag(flags, 'type')
     if (to) {
       rejectLifecycleGroupRecipient(type, to)
@@ -532,6 +570,9 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
     const sendParams = {
       from,
       to,
+      role: toRole,
+      project: getOptionalStringFlag(flags, 'project'),
+      board: getOptionalStringFlag(flags, 'board'),
       run: getOptionalStringFlag(flags, 'run'),
       subject: getRequiredStringFlag(flags, 'subject'),
       body: getOptionalStringFlag(flags, 'body'),
@@ -559,6 +600,9 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
       if ('message' in r) {
         if (r.lifecycle?.action === 'rejected') {
           return `Rejected ${r.message.id}: ${r.lifecycle.reason}`
+        }
+        if (r.roleTarget) {
+          return `Sent ${r.message.id} to ${r.roleTarget.project}/${r.roleTarget.board}/${r.roleTarget.role} -> ${r.roleTarget.handle}`
         }
         return `Sent ${r.message.id}`
       }
@@ -815,6 +859,31 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
   },
 
   'orchestration worker-start': async ({ flags, client, cwd, json }) => {
+    // Why: role input registers the started worker in the official role
+    // roster; --parent-role/--reports-to without --role would be dropped
+    // silently, so reject instead.
+    const workerRole = getOptionalStringFlag(flags, 'role')
+    const workerRoleProject = getOptionalStringFlag(flags, 'project')
+    const workerRoleBoard = getOptionalStringFlag(flags, 'board')
+    const workerRoleParentRole = getOptionalStringFlag(flags, 'parent-role')
+    const workerRoleReportsTo = getOptionalStringFlag(flags, 'reports-to')
+    const anyWorkerRoleFlag =
+      workerRoleProject !== undefined ||
+      workerRoleBoard !== undefined ||
+      workerRoleParentRole !== undefined ||
+      workerRoleReportsTo !== undefined
+    if (anyWorkerRoleFlag && !workerRole) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        '--project/--board/--parent-role/--reports-to require --role.'
+      )
+    }
+    if (workerRole && (!workerRoleProject || !workerRoleBoard)) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        '--role requires --project and --board so the role roster record has an official identity.'
+      )
+    }
     const result = await callMutation<{
       runId: string
       taskId: string
@@ -841,7 +910,18 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
       timeoutMs: getOptionalPositiveIntegerValueFlag(flags, 'timeout-ms'),
       run: getOptionalStringFlag(flags, 'run'),
       from: await resolveCoordinatorTerminalHandle(flags, cwd, client),
-      devMode: isDevCliInvocation()
+      devMode: isDevCliInvocation(),
+      ...(workerRole
+        ? {
+            roleRoster: {
+              role: workerRole,
+              project: workerRoleProject,
+              board: workerRoleBoard,
+              ...(workerRoleParentRole ? { parentRole: workerRoleParentRole } : {}),
+              ...(workerRoleReportsTo ? { reportsTo: workerRoleReportsTo } : {})
+            }
+          }
+        : {})
     })
     if (result.result.state !== 'ready') {
       process.exitCode = 1

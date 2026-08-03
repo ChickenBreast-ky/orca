@@ -29136,6 +29136,26 @@ export class OrcaRuntimeService {
     return this.getTerminalHandleForPaneKey(paneKey) ?? undefined
   }
 
+  // Why: roster queries report model/state only from runtime-observed agent
+  // status (retained snapshot first, then live hook rows); unknown stays null
+  // so a stored handle or title never fills in a guess.
+  getAgentStatusSummaryForPaneKey(paneKey: string): { state: string | null; model: string | null } {
+    const retained = this.latestAgentStatusByPaneKey.get(paneKey)
+    let state: string | null = retained?.payload.state ?? null
+    let model: string | null = retained?.payload.model ?? null
+    if (state && model) {
+      return { state, model }
+    }
+    for (const entry of this.getAgentStatusSnapshotFn?.() ?? []) {
+      if (entry.paneKey !== paneKey) {
+        continue
+      }
+      state ??= entry.state ?? null
+      model ??= entry.model ?? null
+    }
+    return { state, model }
+  }
+
   getAgentStatusLaunchConfigForPaneKey(
     paneKey: string,
     args?: { launchToken?: string }
