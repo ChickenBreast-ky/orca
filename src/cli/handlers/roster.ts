@@ -65,6 +65,21 @@ type RetireResult = {
   warnings: string[]
 }
 
+type RebindResult = {
+  rebound: boolean
+  member: {
+    id: string
+    pane: string
+    run_id: string
+    terminal_id: string | null
+    last_seen_handle: string | null
+    status: string
+  } | null
+  checklist: RetireStep[]
+  blockers: RetireStep[]
+  warnings: string[]
+}
+
 function formatRetire(result: RetireResult): string {
   const lines = result.checklist.map(
     (step) => `  ${step.passed ? 'ok  ' : 'stop'} ${step.code}: ${step.message}`
@@ -81,6 +96,26 @@ function formatRetire(result: RetireResult): string {
     `Retired ${member?.id ?? 'record'} (pane=${member?.pane ?? '?'} run=${member?.run_id ?? '?'}).`,
     ...lines,
     `History kept: cachedHandle=${member?.last_seen_handle ?? 'none'}; excluded from active resolve from now on.`
+  ].join('\n')
+}
+
+function formatRebind(result: RebindResult): string {
+  const lines = result.checklist.map(
+    (step) => `  ${step.passed ? 'ok  ' : 'stop'} ${step.code}: ${step.message}`
+  )
+  if (!result.rebound) {
+    return [
+      `Not rebound — ${result.blockers.length} condition(s) blocked the pane move.`,
+      ...lines,
+      'The roster record was left untouched; no terminal was stopped.'
+    ].join('\n')
+  }
+  const member = result.member
+  const idempotent = result.warnings.length > 0 ? ` ${result.warnings[0]}` : ''
+  return [
+    `Rebound ${member?.id ?? 'record'} to pane=${member?.pane ?? '?'} run=${member?.run_id ?? '?'} (status=${member?.status ?? '?'}).`,
+    ...lines,
+    `Handle cache: terminal=${member?.terminal_id ?? 'unchanged'} cachedHandle=${member?.last_seen_handle ?? 'none'}.${idempotent}`
   ].join('\n')
 }
 
@@ -177,6 +212,20 @@ export const ROSTER_HANDLERS: Record<string, CommandHandler> = {
       dirtyChangesEvidence: getOptionalStringFlag(flags, 'dirty-changes-evidence')
     })
     printResult(result, json, formatRetire)
+  },
+
+  'roster rebind': async ({ flags, client, json }) => {
+    const result = await client.call<RebindResult>('orchestration.rosterRebind', {
+      project: getRequiredStringFlag(flags, 'project'),
+      board: getRequiredStringFlag(flags, 'board'),
+      role: getRequiredStringFlag(flags, 'role'),
+      fromPane: getRequiredStringFlag(flags, 'from-pane'),
+      toPane: getRequiredStringFlag(flags, 'to-pane'),
+      run: getRequiredStringFlag(flags, 'run'),
+      terminalId: getOptionalStringFlag(flags, 'terminal-id'),
+      lastSeenHandle: getOptionalStringFlag(flags, 'last-seen-handle')
+    })
+    printResult(result, json, formatRebind)
   },
 
   'roster summary': async ({ flags, client, json }) => {

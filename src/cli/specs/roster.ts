@@ -61,6 +61,28 @@ export const ROSTER_COMMAND_SPECS: CommandSpec[] = [
     ]
   },
   {
+    path: ['roster', 'rebind'],
+    summary: 'Rebind an active role roster record to a new pane',
+    usage:
+      'orca roster rebind --project <project> --board <board> --role <role> --from-pane <pane_key> --to-pane <pane_key> --run <run_id> [--terminal-id <handle>] [--last-seen-handle <handle>] [--json]',
+    allowedFlags: [
+      ...GLOBAL_FLAGS,
+      'project',
+      'board',
+      'role',
+      'from-pane',
+      'to-pane',
+      'run',
+      'terminal-id',
+      'last-seen-handle'
+    ],
+    notes: [
+      'Transfers an active roster identity (project+board+role+run) from an old pane to a new pane when the terminal has been replaced; identity fields never change, only the stable pane and optional handle cache move.',
+      'Runs a fail-closed checklist: exactly one active candidate on the old pane, the new pane is distinct and not already claimed by any active roster record, and the record stays active throughout.',
+      'A rebind to the equivalent pane with no handle update is idempotent — it returns success without writing; when --terminal-id or --last-seen-handle is provided on the same pane, the handle cache is refreshed without moving the pane. A mismatched old pane, a retired record, an ambiguous identity, or a target pane already held by any active roster record leaves everything untouched.'
+    ]
+  },
+  {
     path: ['roster', 'summary'],
     summary: 'Summarize active supervisors, workers, and cleanup candidates',
     usage: 'orca roster summary --all [--project <project>] [--board <board>] [--json]',

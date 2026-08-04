@@ -12,6 +12,8 @@ import {
 } from '../../orchestration/role-roster-query'
 import { retireRoleRosterMember } from '../../orchestration/role-roster-retire'
 
+import { rebindRoleRosterMember } from '../../orchestration/role-roster-rebind'
+
 const RosterListParams = z.object({
   worktree: OptionalString,
   project: OptionalString,
@@ -40,6 +42,17 @@ const RosterIdentityParams = z.object({
   board: requiredString('Missing --board'),
   role: requiredString('Missing --role'),
   run: OptionalString
+})
+
+const RosterRebindParams = z.object({
+  project: requiredString('Missing --project'),
+  board: requiredString('Missing --board'),
+  role: requiredString('Missing --role'),
+  fromPane: requiredString('Missing --from-pane'),
+  toPane: requiredString('Missing --to-pane'),
+  run: requiredString('Missing --run'),
+  terminalId: OptionalString,
+  lastSeenHandle: OptionalString
 })
 
 const RosterSummaryParams = z.object({
@@ -151,6 +164,27 @@ export const ORCHESTRATION_ROSTER_METHODS: RpcMethod[] = [
         dirtyChangesEvidence: params.dirtyChangesEvidence
       })
       return result
+    }
+  }),
+  defineMethod({
+    name: 'orchestration.rosterRebind',
+    params: RosterRebindParams,
+    handler: async (params, { runtime }) => {
+      // Why: like retire, blockers come back as data so the caller sees the
+      // full checklist. A failed rebind never stops a terminal or mutates state.
+      return rebindRoleRosterMember({
+        db: runtime.getOrchestrationDb(),
+        identity: {
+          project: params.project,
+          board: params.board,
+          role: params.role,
+          fromPane: params.fromPane,
+          toPane: params.toPane,
+          runId: params.run
+        },
+        terminalId: params.terminalId,
+        lastSeenHandle: params.lastSeenHandle
+      })
     }
   }),
   defineMethod({

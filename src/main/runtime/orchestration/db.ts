@@ -6318,6 +6318,48 @@ export class OrchestrationDb {
     return this.getRoleRoster(id)
   }
 
+  // Why: rebind is the only sanctioned pane mutation — identity fields
+  // (project/board/role/run_id) are immutable everywhere else. A terminal
+  // replacement needs a verified path to move the stable pane without DB
+  // surgery, so this method lives behind the rebind checklist, not in
+  // updateRoleRoster which intentionally omits pane.
+  rebindRoleRosterPane(
+    id: string,
+    params: { pane: string; terminalId?: string; lastSeenHandle?: string }
+  ): RoleRosterRow | undefined {
+    // Why: WHERE status='active' makes a concurrent retire or a second
+    // rebind that already moved the record a no-op (changes=0) instead of a
+    // silent overwrite. COALESCE preserves existing terminal_id and
+    // last_seen_handle when the caller omits them, without a separate read.
+    const result = this.db
+      .prepare(
+        `UPDATE role_roster
+         SET pane = ?,
+             terminal_id = COALESCE(?, terminal_id),
+             last_seen_handle = COALESCE(?, last_seen_handle),
+             updated_at = datetime('now')
+         WHERE id = ? AND status = 'active'`
+      )
+      .run(params.pane, params.terminalId ?? null, params.lastSeenHandle ?? null, id)
+    if (result.changes !== 1) {
+      return undefined
+    }
+    return this.getRoleRoster(id)
+  }
+
+  // Why: rebind must refuse any active roster record on the target pane,
+  // regardless of identity — moving a supervisor onto a worker pane would
+  // grant reverse/upper-report authority for that pane. Same-identity matches
+  // are impossible here (step 1 guarantees exactly one active record on
+  // fromPane, and toPane differs), so this query scans every role on toPane.
+  listActiveRoleRostersByPane(pane: string): RoleRosterRow[] {
+    return (
+      this.db
+        .prepare(`SELECT * FROM role_roster WHERE status = 'active' ORDER BY created_at`)
+        .all() as RoleRosterRow[]
+    ).filter((row) => isEquivalentPaneKey(row.pane, pane))
+  }
+
   // Why: card 8 fix — worker_done_recorded must only accept a lifecycle-
   // reconciled, authority-verified completion. A rejected or unauthorized
   // worker_done never reaches settlement, so it can never produce the

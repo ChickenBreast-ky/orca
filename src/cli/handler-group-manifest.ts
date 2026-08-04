@@ -123,7 +123,14 @@ export const HANDLER_GROUPS: readonly HandlerGroup[] = [
   },
   {
     name: 'roster',
-    keys: ['roster list', 'roster show', 'roster resolve', 'roster retire', 'roster summary'],
+    keys: [
+      'roster list',
+      'roster show',
+      'roster resolve',
+      'roster retire',
+      'roster rebind',
+      'roster summary'
+    ],
     load: async () => (await import('./handlers/roster.js')).ROSTER_HANDLERS
   },
   {
