@@ -43,6 +43,13 @@ describe('verify-packaged-daemon-entry', () => {
     expect(() => verifyPackagedDaemonEntryBoots(resourcesDir)).not.toThrow()
   })
 
+  it('fails clearly when the packaged entry exceeds the timeout', () => {
+    writePackagedEntry('setInterval(() => {}, 1_000)\n')
+    expect(() => verifyPackagedDaemonEntryBoots(resourcesDir, { timeoutMs: 50 })).toThrow(
+      /timed out after 50ms.*ETIMEDOUT/
+    )
+  })
+
   it('fails when the packaged entry cannot resolve its module graph', () => {
     writePackagedEntry('require("orca-module-that-does-not-exist")\n')
     expect(() => verifyPackagedDaemonEntryBoots(resourcesDir)).toThrow(

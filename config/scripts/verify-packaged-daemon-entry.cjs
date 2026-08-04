@@ -2,6 +2,8 @@ const { existsSync } = require('node:fs')
 const { spawnSync } = require('node:child_process')
 const { join } = require('node:path')
 
+const DEFAULT_PACKAGED_DAEMON_ENTRY_TIMEOUT_MS = 60_000
+
 // Why: `asarUnpack` in config/electron-builder.config.cjs lists
 // out/main/daemon-entry.js on every platform, and the packaged daemon fork
 // (src/main/daemon/daemon-init.ts) resolves exactly this unpacked path. A
@@ -32,12 +34,23 @@ function assertPackagedDaemonEntryExists(resourcesDir) {
 // <appOutDir>/resources elsewhere). execPath defaults to the packaging Node.
 function verifyPackagedDaemonEntryBoots(resourcesDir, options = {}) {
   const execPath = options.execPath || process.execPath
+  const timeoutMs = options.timeoutMs ?? DEFAULT_PACKAGED_DAEMON_ENTRY_TIMEOUT_MS
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(
+      `[verify-packaged-daemon-entry] timeout must be a finite positive number: ${timeoutMs}`
+    )
+  }
   const entryPath = assertPackagedDaemonEntryExists(resourcesDir)
 
-  const result = spawnSync(execPath, [entryPath], { encoding: 'utf8', timeout: 10_000 })
+  const result = spawnSync(execPath, [entryPath], { encoding: 'utf8', timeout: timeoutMs })
   if (result.error) {
+    const reason =
+      result.error.code === 'ETIMEDOUT'
+        ? `timed out after ${timeoutMs}ms`
+        : `failed with ${result.error.code || result.error.message}`
     throw new Error(
-      `[verify-packaged-daemon-entry] could not launch daemon-entry.js: ${result.error.message}`
+      `[verify-packaged-daemon-entry] could not launch daemon-entry.js: ${reason} ` +
+        `(${result.error.message})`
     )
   }
   const stderr = result.stderr || ''
