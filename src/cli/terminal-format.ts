@@ -156,7 +156,21 @@ export function formatTerminalCreate(result: { terminal: RuntimeTerminalCreate }
   const titleNote = result.terminal.title ? ` (title: "${result.terminal.title}")` : ''
   const surfaceNote = result.terminal.surface ? ` [${result.terminal.surface}]` : ''
   const warningNote = result.terminal.warning ? `\nwarning: ${result.terminal.warning}` : ''
-  return `Created terminal ${result.terminal.handle}${titleNote}${surfaceNote}${warningNote}`
+  return `Created terminal ${result.terminal.handle}${titleNote}${surfaceNote}${formatRoleRosterNote(result.terminal)}${warningNote}`
+}
+
+function formatRoleRosterNote(terminal: RuntimeTerminalCreate): string {
+  const roleRoster = terminal.roleRoster
+  if (!roleRoster) {
+    return ''
+  }
+  if (roleRoster.registered) {
+    return `\nrole roster: registered ${roleRoster.member.role} [${roleRoster.member.id}]`
+  }
+  // Why: the warning already carries the detail; this keeps failure visible when none was set.
+  return terminal.warning
+    ? ''
+    : `\nrole roster: registration failed (${roleRoster.error.code}): ${roleRoster.error.message}`
 }
 
 export function formatTerminalSplit(result: { split: RuntimeTerminalSplit }): string {

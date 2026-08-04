@@ -526,6 +526,8 @@ describe('orca root help', () => {
     expect(terminalHelp).toContain(
       'orca terminal create --worktree active --command "codex" --json'
     )
+    expect(terminalHelp).toContain('roleRoster.registered')
+    expect(terminalHelp).toContain('--role <role>')
     expect(callMock).not.toHaveBeenCalled()
   })
 })
@@ -3757,6 +3759,125 @@ describe('orca cli worktree awareness', () => {
       title: undefined,
       focus: false
     })
+  })
+
+  it('prints the registered roster member on terminal create --role success', async () => {
+    queueFixtures(
+      callMock,
+      okFixture('req_terminal_create', {
+        terminal: {
+          handle: 'term_2',
+          worktreeId: 'repo::/tmp/repo/feature',
+          title: null,
+          roleRoster: {
+            registered: true,
+            member: {
+              id: 'roster_1',
+              pane: 'tab_1:leaf_1',
+              project: 'orca',
+              board: 'roster',
+              role: 'relay',
+              runId: 'run_1',
+              kind: 'worker',
+              status: 'active',
+              parentRole: 'supervisor',
+              reportsTo: null,
+              lastSeenHandle: 'term_2',
+              createdAt: '2026-08-04 00:00:00',
+              updatedAt: '2026-08-04 00:00:00'
+            }
+          }
+        }
+      })
+    )
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const priorExitCode = process.exitCode
+    process.exitCode = undefined
+
+    await main(
+      [
+        'terminal',
+        'create',
+        '--worktree',
+        'id:repo::/tmp/repo/feature',
+        '--role',
+        'relay',
+        '--project',
+        'orca',
+        '--board',
+        'roster',
+        '--run',
+        'run_1',
+        '--parent-role',
+        'supervisor'
+      ],
+      '/tmp/repo/feature/src'
+    )
+
+    expect(callMock).toHaveBeenCalledWith(
+      'terminal.create',
+      expect.objectContaining({
+        roleRoster: {
+          role: 'relay',
+          project: 'orca',
+          board: 'roster',
+          runId: 'run_1',
+          parentRole: 'supervisor'
+        }
+      })
+    )
+    expect(String(logSpy.mock.calls[0][0])).toContain('role roster: registered relay [roster_1]')
+    expect(process.exitCode).toBeUndefined()
+    process.exitCode = priorExitCode
+  })
+
+  it('exits non-zero and prints the warning when roster registration fails', async () => {
+    queueFixtures(
+      callMock,
+      okFixture('req_terminal_create', {
+        terminal: {
+          handle: 'term_3',
+          worktreeId: 'repo::/tmp/repo/feature',
+          title: null,
+          warning:
+            'Role roster registration failed (role_roster_conflict): Role relay is already active on pane tab_9:leaf_9 for orca/roster/run_1; refusing a second active record.',
+          roleRoster: {
+            registered: false,
+            error: {
+              code: 'role_roster_conflict',
+              message:
+                'Role relay is already active on pane tab_9:leaf_9 for orca/roster/run_1; refusing a second active record.'
+            }
+          }
+        }
+      })
+    )
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const priorExitCode = process.exitCode
+    process.exitCode = undefined
+
+    await main(
+      [
+        'terminal',
+        'create',
+        '--worktree',
+        'id:repo::/tmp/repo/feature',
+        '--role',
+        'relay',
+        '--project',
+        'orca',
+        '--board',
+        'roster',
+        '--run',
+        'run_1'
+      ],
+      '/tmp/repo/feature/src'
+    )
+
+    const output = String(logSpy.mock.calls[0][0])
+    expect(output).toContain('warning: Role roster registration failed (role_roster_conflict)')
+    expect(process.exitCode).toBe(1)
+    process.exitCode = priorExitCode
   })
 
   it('collects and formats memory diagnostics', async () => {

@@ -246,7 +246,8 @@ export const CORE_COMMAND_SPECS: CommandSpec[] = [
     notes: [
       'Creates a visible terminal tab without switching focus when possible; falls back to a background handle if the UI cannot adopt it. Pass --focus to switch to it.',
       'Use this, not worktree create, for a fresh agent in the current checkout.',
-      'With --role, the new terminal is registered in the official role roster (project+board+role+pane+run identity); --project, --board, and --run are required together with it.'
+      'With --role, the new terminal is registered in the official role roster (project+board+role+pane+run identity); --project, --board, and --run are required together with it.',
+      'The receipt reports the roster outcome as roleRoster.registered with the registered member on success; a failed registration prints a warning and exits non-zero so a partial create never looks like plain success.'
     ],
     examples: [
       'orca terminal create --json',

@@ -184,6 +184,11 @@ export const TERMINAL_HANDLERS: Record<string, CommandHandler> = {
       ...(useRendererBackedInteractiveTerminal ? { rendererBacked: true, activate: focus } : {})
     })
     printResult(result, json, formatTerminalCreate)
+    // Why: a live terminal whose roster write failed is a partial success;
+    // scripts must fail closed on it (same contract as terminal wait).
+    if (result.result.terminal.roleRoster?.registered === false) {
+      process.exitCode = 1
+    }
   },
   // `focus` resolves to this canonical path via CommandSpec.aliases before dispatch.
   'terminal switch': terminalFocusHandler,

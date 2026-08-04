@@ -652,6 +652,29 @@ export type RuntimeTerminalCreateRequestPayload =
       source: 'runtime-session'
     })
 
+// Why: `terminal create --role` must never look like plain success when the
+// official role_roster write failed. The receipt is a discriminated union so a
+// registered member and a failure reason can never both be absent.
+export type RuntimeTerminalCreateRoleRosterMember = {
+  id: string
+  pane: string
+  project: string
+  board: string
+  role: string
+  runId: string
+  kind: 'coordinator' | 'worker' | 'supervisor'
+  status: 'active' | 'inactive' | 'retired'
+  parentRole: string | null
+  reportsTo: string | null
+  lastSeenHandle: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type RuntimeTerminalCreateRoleRoster =
+  | { registered: true; member: RuntimeTerminalCreateRoleRosterMember }
+  | { registered: false; error: { code: string; message: string } }
+
 export type RuntimeTerminalCreate = {
   handle: string
   tabId?: string
@@ -668,6 +691,8 @@ export type RuntimeTerminalCreate = {
   agentSessionDisposition?: 'created' | 'adopted'
   /** The host attached this request to the existing stable pane owner. */
   isReattach?: true
+  /** Present when the create carried role roster input; registered=false means the terminal is live but the official roster write failed. */
+  roleRoster?: RuntimeTerminalCreateRoleRoster
 }
 
 export type RuntimeTerminalSplit = {

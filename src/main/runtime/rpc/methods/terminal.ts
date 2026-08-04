@@ -40,8 +40,11 @@ import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { isTerminalQueryReply } from '../../../../shared/terminal-query-reply'
 import {
   RoleRosterCreateParamsSchema,
-  recordCreatedRoleRoster
+  recordCreatedRoleRoster,
+  roleRosterReceiptError,
+  toRoleRosterReceiptMember
 } from '../../orchestration/role-roster-creation'
+import type { RuntimeTerminalCreateRoleRoster } from '../../../../shared/runtime-types'
 import {
   EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE,
   scanTerminalReplyQuerySequences,
@@ -954,16 +957,17 @@ const TerminalCreateParams = z.object({
 
 // Why: card 2 — a terminal created with role input leaves an official
 // role_roster record keyed by its stable pane; the handle is only the
-// last_seen_handle cache. The roster write never fails terminal.create: an
-// unresolvable pane or a failed/conflicting write is surfaced as a warning
-// log so the skip is observable instead of silent.
+// last_seen_handle cache. The roster write never fails terminal.create (the
+// live terminal cannot be un-created), but the receipt must say exactly what
+// happened: registered member on success, structured error on partial success,
+// never an ok=true that hides a missing registration.
 function recordTerminalCreateRoleRoster(
   runtime: OrcaRuntimeService,
   params: z.infer<typeof TerminalCreateParams>,
   terminalHandle: string
-): void {
+): RuntimeTerminalCreateRoleRoster | undefined {
   if (!params.roleRoster) {
-    return
+    return undefined
   }
   const pane = runtime.getTerminalPaneKey(terminalHandle)
   if (!pane) {
@@ -973,10 +977,16 @@ function recordTerminalCreateRoleRoster(
       project: params.roleRoster.project,
       board: params.roleRoster.board
     })
-    return
+    return {
+      registered: false,
+      error: {
+        code: 'role_roster_pane_unresolved',
+        message: `Terminal ${terminalHandle} has no resolvable pane, so no official role roster record was written.`
+      }
+    }
   }
   try {
-    recordCreatedRoleRoster({
+    const row = recordCreatedRoleRoster({
       db: runtime.getOrchestrationDb(),
       input: params.roleRoster,
       pane,
@@ -984,6 +994,7 @@ function recordTerminalCreateRoleRoster(
       worktree: params.worktree,
       title: params.title
     })
+    return { registered: true, member: toRoleRosterReceiptMember(row) }
   } catch (error) {
     console.warn('[role-roster] Failed to record roster for created terminal', {
       terminalHandle,
@@ -991,6 +1002,7 @@ function recordTerminalCreateRoleRoster(
       role: params.roleRoster.role,
       error
     })
+    return { registered: false, error: roleRosterReceiptError(error) }
   }
 }
 
@@ -1476,8 +1488,24 @@ export const TERMINAL_METHODS: RpcAnyMethod[] = [
             ...(preAllocatedHandle ? { preAllocatedHandle } : {})
           })
       )
-      recordTerminalCreateRoleRoster(runtime, params, terminal.handle)
-      return { terminal }
+      const roleRoster = recordTerminalCreateRoleRoster(runtime, params, terminal.handle)
+      if (!roleRoster) {
+        return { terminal }
+      }
+      if (roleRoster.registered) {
+        return { terminal: { ...terminal, roleRoster } }
+      }
+      // Why: partial success — the terminal is live but not on the official
+      // roster. The machine field and the human warning both say so; the
+      // handle stays in the receipt so the caller can rebind or close it.
+      const rosterWarning = `Role roster registration failed (${roleRoster.error.code}): ${roleRoster.error.message}`
+      return {
+        terminal: {
+          ...terminal,
+          roleRoster,
+          warning: terminal.warning ? `${terminal.warning} ${rosterWarning}` : rosterWarning
+        }
+      }
     }
   }),
   defineMethod({

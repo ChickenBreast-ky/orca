@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { OrchestrationDb } from './db'
 import { OrchestrationError } from './orchestration-error'
 import type { RoleRosterKind, RoleRosterRow } from './types'
+import type { RuntimeTerminalCreateRoleRosterMember } from '../../../shared/runtime-types'
 
 // Why: card 2 wires role input into the terminal/worker creation paths so a
 // new supervisor, relay, or worker leaves an official role_roster record at
@@ -67,6 +68,42 @@ export function recordCreatedRoleRoster(params: {
     title: params.title,
     lastSeenHandle: params.terminalHandle
   })
+}
+
+// Why: the terminal create receipt must prove registration in the same
+// identity shape roster show/list uses, so a supervisor can verify or rebind
+// without a second query — and a missing member can never pass as success.
+export function toRoleRosterReceiptMember(
+  row: RoleRosterRow
+): RuntimeTerminalCreateRoleRosterMember {
+  return {
+    id: row.id,
+    pane: row.pane,
+    project: row.project,
+    board: row.board,
+    role: row.role,
+    runId: row.run_id,
+    kind: row.kind,
+    status: row.status,
+    parentRole: row.parent_role,
+    reportsTo: row.reports_to,
+    lastSeenHandle: row.last_seen_handle,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
+// Why: partial create (live terminal, failed roster write) keeps the original
+// OrchestrationError code so callers can tell a conflict from a transient
+// write failure instead of parsing message text.
+export function roleRosterReceiptError(error: unknown): { code: string; message: string } {
+  if (error instanceof OrchestrationError) {
+    return { code: error.code, message: error.message }
+  }
+  return {
+    code: 'role_roster_write_failed',
+    message: error instanceof Error ? error.message : String(error)
+  }
 }
 
 // Why: keeps the worker-start call site inside the max-lines budget while the
