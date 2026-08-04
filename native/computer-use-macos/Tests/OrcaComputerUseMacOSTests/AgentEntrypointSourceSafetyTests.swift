@@ -34,6 +34,33 @@ final class AgentEntrypointSourceSafetyTests: XCTestCase {
         XCTAssertTrue(source.contains("event.flags = flags\n        event.postToPid(pid)"))
     }
 
+    func testTrustedPeerBundleAllowlistUsesExactProductIdentityBoundaries() throws {
+        let source = try agentEntrypointSource()
+
+        // Why: peer authorization must distinguish the product/helper family from lookalike IDs.
+        let allowedRules = [
+            #"bundleId == "com.chickenbreastky.orca-kyle""#,
+            #"bundleId.hasPrefix("com.chickenbreastky.orca-kyle.")"#,
+            #"bundleId == "com.stablyai.orca""#,
+            #"bundleId.hasPrefix("com.stablyai.orca.dev.")"#,
+            #"bundleId == "com.github.Electron""#,
+        ]
+        for rule in allowedRules {
+            XCTAssertTrue(source.contains(rule), "Missing trusted peer rule: \(rule)")
+        }
+
+        let rejectedLookalikeRules = [
+            #"bundleId == "com.chickenbreastky""#,
+            #"bundleId == "com.chickenbreastky.orca-kyle-other""#,
+            #"bundleId == "com.chickenbreastky.orca-kylex""#,
+            #"bundleId.hasPrefix("com.chickenbreastky")"#,
+            #"bundleId.hasPrefix("com.chickenbreastky.orca-kyle")"#,
+        ]
+        for rule in rejectedLookalikeRules {
+            XCTAssertFalse(source.contains(rule), "Unexpected trusted peer rule: \(rule)")
+        }
+    }
+
     private func agentEntrypointSource() throws -> String {
         let testFile = URL(fileURLWithPath: #filePath)
         let packageRoot = testFile
