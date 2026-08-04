@@ -62,3 +62,60 @@
 - 요구 사항: 등록 실패는 **fail-closed(생성 자체를 실패)** 또는 **명시적 경고**여야 한다. 어느 쪽을 택하든 receipt에 **등록 여부(`registered`)를 반드시 싣는다** — 호출자가 확인할 수단이 없는 지금이 사고의 핵심이다.
 - 주의: `:97-100`의 기존 주석은 "발령 준비 후 실패는 살아 있는 작업자를 고아로 만든다"는 이유로 늦은 실패를 warning으로 낮췄다. 그 이유 자체는 유효하므로, 해결은 "warning을 error로 바꾸기"가 아니라 **검사 시점을 앞당기거나 결과를 receipt로 노출하는** 쪽이어야 한다.
 - 검증 기준: identity 충돌 상태에서 `terminal create --role` 왕복 1회 — receipt의 등록 여부가 `roster list` 실제 결과와 일치할 것. 충돌 없는 정상 생성 경로 회귀 없음.
+
+## 6. 판 개설 안전 카드 군 — 선언과 실제 상태의 장부 대조
+
+- 우선순위: **현재 `upstream-sync-1` 랠리 뒤.** 랠리 중에는 카드로 만들거나 구현하지 않는다.
+- Why: 판 개설 선언과 실제 장부 상태가 다르면 감독·companion·relay가 있다고 믿으면서도 작업은 조용히 멈춘다. 2026-08-04 `upstream-sync-1` 판에서 개시 선언 뒤 첫 카드 생성 전까지 16분간 카드 0장·발령 0건으로 정체됐고, 첫 편지 이전에는 companion이 깨울 신호 자체가 없었다.
+- 관통 원칙: **선언과 실제 상태의 불일치를 장부 대조가 잡는다.** 화면 제목·스피너·명령 receipt만으로 성공을 판정하지 않는다.
+- 카드 1 — `orchestration board-open`: Run 생성과 필수 역할 등록을 한 원자 명령으로 수행한다. receipt에는 Run, coordinator, companion, relay 각 단계의 실제 등록·기동 결과를 정직하게 노출한다. 일부 단계 실패를 `ok=true` 하나로 숨기지 않으며, 결함 A 수정과 한 묶음으로 설계한다.
+- 카드 2 — `orchestration board-doctor`: coordinator 바인딩, companion 생존, relay active, relay kicker 생존·5분 주기·`PPID=1` 분리 상태, ready 카드 워치독 준비 상태를 `project+board+run+role+pane` 장부와 실제 프로세스로 대조하고 미비 목록을 반환한다. 감독은 개시 선언을 보내기 전에 doctor 통과를 관문으로 사용한다.
+- 카드 3 — ready 카드 워치독: open 상태 board에서 ready 카드가 설정된 N분 이상 미발령이면 해당 Run의 현재 coordinator 터미널을 역할·pane 기준으로 다시 찾아 자동 wake 이벤트를 보낸다.
+- 공통 가드레일: 다른 board·Run을 깨우지 않고, active dispatch가 있거나 board가 닫혔거나 decision gate 대기 중이면 깨우지 않는다. 고정 handle 재사용과 DB 직접 수정은 금지한다.
+- 검증 기준: 부분 등록 실패가 receipt·doctor 미비 목록에 그대로 나타나고 개시 선언이 차단될 것. 정상 판은 doctor PASS. ready 카드 장기 미발령 시 wake 1회, 발령·board 종료·gate 대기 시 wake 0회, 같은 정체 구간 중복 wake 방지.
+
+## 7. companion NUDGE — kicker 주기 장부 대조
+
+- 우선순위: **현재 `upstream-sync-1` 랠리 뒤.** 구현 대상은 `kyle-agent-skills`의 `orca-conductor` companion이며, 랠리 중에는 카드로 만들지 않는다.
+- Why: 편지가 아직 없더라도 장부에는 ready 카드와 active dispatch 부재가 보인다. companion이 kicker 주기마다 이 결정적 상태를 대조하면 감독의 추측 없이 안전하게 정체를 깨울 수 있다.
+- 조건: `ready 카드 present + active dispatch absent + coordinator idle`이 모두 참일 때만 coordinator에 `NUDGE` wake를 보낸다.
+- 가드레일: 화면 스피너·제목·자연어 추측을 근거로 쓰지 않는다. project+board+run 범위를 고정하고 현재 coordinator 역할을 전송 직전에 다시 찾는다. 같은 장부 상태의 중복 NUDGE를 막는다.
+- 검증 기준: 세 조건이 모두 참일 때 NUDGE 1회, 각 조건이 하나라도 거짓이면 0회, 카드·dispatch 상태가 바뀐 뒤에는 새 상태로 다시 판정.
+
+## 8. worker-start 입력 검증 고정 테스트
+
+- 우선순위: **현재 `upstream-sync-1` 랠리 뒤.** 2026-08-03 kyle 정책에 따라 동작 불변 리팩터링의 테스트 정비는 현재 체크포인트 관문을 막지 않는다.
+- Why: `worker-start` 입력 검증을 별도 모듈로 옮긴 뒤에도 잘못된 입력 조합과 검사 순서가 바뀌지 않았음을 빠르게 확인할 수 있어야 한다.
+- 범위: `terminal + agent`, 새 worktree + `terminal`, 새 worktree의 `name` 누락, 기존 worktree에 생성 옵션 전달, terminal 없이 agent 미설정·비TUI agent, 정상 TUI agent의 runtime 검사 호출과 순서를 직접 고정한다.
+- 검증 기준: 각 잘못된 입력이 기존 오류 코드·문구로 거부되고, 정상 TUI agent에서 `validateOrchestrationAgentLauncher`가 topology 조회 전에 정확히 호출될 것.
+
+## 9. upstream 동기화 뒤 테스트 기대값 정비
+
+- 우선순위: **현재 `upstream-sync-1` 랠리 뒤.** 2026-08-03 kyle 정책에 따라 제품 동작이 이미 의도대로인 테스트 정비는 릴리즈 관문을 막지 않는다.
+- Why: upstream 테스트가 원본 Orca의 브랜드·자동 업데이트 UI·DB 버전·기본 데이터 경로를 기대하면 Orca Kyle의 의도된 포크 계약과 충돌해 전체 시험 결과를 흐린다.
+- 범위: fork appId 기대값 7건, packaging-contract의 `node:test`/Vitest 실행 방식 1묶음, manual-only 사이드바 UI 기대값 2건, schema v25·retire blocker 기대값 3건, launch 시험의 `ORCA_USER_DATA_PATH` 격리 환경 4건, relay `agent-exec-handler` 시험의 ambient `GIT_CONFIG_*` 격리 2건을 카드별로 정비한다.
+- 환경 분리: macOS와 Linux의 updater·csh·로케일 차이 12건은 플랫폼을 명시해 실행하거나 해당 플랫폼 CI 결과로 판정한다. built CLI 2건과 모바일 generated engine 13개 suite는 빌드 카드가 산출물을 만든 뒤 검증한다.
+- root guard 후속: 탭·줄바꿈 root 이름과 동일 이름 file/tree type 변경을 자동 시험으로 고정하고, 시험 실행 셸이 실제 Bash 3.2인지 명시적으로 검증한다. 실제 NUL-safe 동작은 Card 5E R2 독립 검수에서 8/8 통과했다.
+- Computer Use peer allowlist 후속: source-string 회귀 검사에 `hasPrefix("com.chickenbreastky.")`, `contains("orca-kyle")` 같은 과도한 확장 변형을 추가로 거부하고, Swift와 TypeScript의 product identity 규칙이 함께 바뀌는 교차 검사를 검토한다. Card 7C 독립 검수에서 현재 구현 자체는 치명·중요 0건으로 PASS했다.
+- 검증 기준: 제품 코드를 테스트에 맞춰 되돌리지 않고, 각 테스트가 포크 계약 또는 명시된 플랫폼 계약을 정확히 표현할 것.
+
+## 10. 고정 로컬 개발용 서명 인증서 도입 — Rottie Local 방식
+
+- 우선순위: **현재 `upstream-sync-1` 랠리 뒤.** 이번 랠리의 앱 교체·검수 흐름을 막지 않는다.
+- Why: 매 로컬 빌드의 ad-hoc 서명이 달라지면 macOS가 새 앱으로 판단해 Computer Use의 손쉬운 사용·화면 기록 권한을 다시 요구한다. 월간 랠리마다 사람이 같은 권한을 재부여하지 않도록 로컬 빌드 신원을 고정한다.
+- 범위: Keychain에 고정 로컬 개발용 인증서(`Rottie Local` 방식)를 만들고 `pnpm build:mac`의 로컬 서명 경로에서만 사용한다. 인증서·개인 키·비밀값은 저장소에 넣지 않으며 Developer ID 릴리스 서명·공증 계약은 바꾸지 않는다.
+- 플레이북 반영: [`upstream-sync-playbook.md`](./upstream-sync-playbook.md)의 환경 함정 절을 매 랠리 시작 전에 읽고, 고정 인증서 유무와 실제 codesign identity를 사전 점검한다.
+- 검증 기준: 같은 인증서로 연속 2회 빌드한 앱의 서명 신원이 안정적이고, 첫 승인 뒤 두 번째 빌드에서 Accessibility·Screen Recording 권한이 유지될 것. 인증서가 없거나 잘못됐으면 키체인 자동 탐색으로 멈추지 말고 명확히 실패할 것.
+
+## 11. QA 방식 쉬운 설명 문서
+
+- Why: kyle이 서로 다른 검증 방법을 어려운 용어 때문에 헷갈리지 않고, 무엇을 실제로 확인했는지 바로 이해할 수 있게 한다.
+- 범위: `docs/user-guide/` 아래에 kyle용 쉬운 말로 검증 3형제를 설명하는 짧은 문서를 만든다. 비유와 그림을 써도 되며 `kyle-plain-language` 기준을 따른다.
+  - 단위 테스트: 앱을 켜지 않고 부품만 검사한다.
+  - 실기동 E2E: 진짜 앱을 격리된 가짜 집에서 하나 더 켜고 CLI 대화로 검사한다. 화면 클릭 검사는 Computer Use 후순위 결정에 따라 이번 범위에서 제외한다.
+  - 데몬 점화: 창 없는 백그라운드 엔진만 잠깐 단독으로 시동한다.
+
+## 결함 E 검증 가설 추가 (2026-08-04 kyle, 슈퍼감독 기록)
+
+- Computer Use AXIsProcessTrusted false의 검증 가설: **"같은 앱이 스스로를 조작하지 못하는 제약"**에 막혔을 가능성 (kyle 제안). 운영·후보 문맥 모두 거부였던 실측과 부합하는지 결함 E 카드(task_08fc56ec260a)에서 함께 검증.
+- 대안 경로: Computer Use를 Orca 내장 대신 **Codex 쪽을 거쳐** 실행하는 방식도 후보 — 추후 검증 (kyle).
