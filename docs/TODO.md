@@ -146,3 +146,9 @@
 - Why: 스킬 dispatch-safe를 우회한 raw orchestration dispatch도 라우터 선택 없이 실행되지 못하게 제품 경계에서 차단한다. (router-improvement-1 판은 위협 모델상 A안 "스킬 2단계 영수증"으로 완결 — kyle 결재 슈퍼감독 운영 판단, 원 지시 msg_8de55f6d81ab)
 - 범위 후보: 사전 발령 ID 예약 또는 서명된 선택 영수증 / dispatch API의 영수증 검증·원자적 소비 / 유효 영수증 없는 raw dispatch 거부 / task·run·pane·model 바인딩 / 재사용(replay)·만료 방지 / 독립 적대 검수.
 - [ ] 차기 orca-kyle 판 제품 카드로 승격 여부는 kyle 결정.
+
+## gate-create의 관문-편지 원자화 (2026-08-05 실사고 gate_404bcf8d5e01, 슈퍼감독 기록)
+
+- Why: 감독이 decision_gate를 장부에 만들고 슈퍼 Run 편지 발송을 누락하면, 판 전체가 "정당한 대기"로 위장된 채 무기한 멈춘다 (실사고: E 관문 편지 미발송 → kyle 육안 발견까지 대기). 규칙 문장은 언젠가 빼먹힌다 — 절차를 코드로 옮긴다.
+- [ ] `orchestration gate-create`가 관문 생성과 동시에 지정 상위 Run(예: --notify-run 또는 Run 계층 설정)으로 decision_gate 편지를 자동 발송 — 생성·통지를 원자적 한 동작으로. 편지 발송 실패 시 관문 생성도 실패(fail-closed).
+- 임시 방어(코드 전까지): companion "고아 관문 NUDGE" (kyle-agent-skills TODO 2026-08-05 항목 — pending gate 존재 + 대응 편지 부재 → 감독 1회 깨움).
