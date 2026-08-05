@@ -115,7 +115,28 @@
   - 실기동 E2E: 진짜 앱을 격리된 가짜 집에서 하나 더 켜고 CLI 대화로 검사한다. 화면 클릭 검사는 Computer Use 후순위 결정에 따라 이번 범위에서 제외한다.
   - 데몬 점화: 창 없는 백그라운드 엔진만 잠깐 단독으로 시동한다.
 
+## 12. 완료 세션 정리 — failed 카드와 구세대 capability 누락 이력
+
+- 우선순위: **이번 `improvement-1` 판 범위 밖, 다음 판 카드 후보.** 현재 기록을 강제로 고치거나 다른 카드의 완료 이력을 대신 넣지 않는다.
+- Why: 작업이 끝나 터미널이 사라졌는데 roster만 살아 있다고 표시되면, 감독이 죽은 작업자를 실제 작업자로 오해하고 메모리와 검수 슬롯을 낭비한다.
+- 2026-08-05 실측:
+  - `roster retire`는 `status=failed`인 검수 카드 3건을 `task_completed`에서 거부했다. 실패 보고이더라도 작업은 끝났지만 정리할 수 없다.
+  - 구세대 Dispatch capability 주입 누락으로 감독이 안전하게 수동 완료한 구현 카드 5건은 공식 `worker_done`이 없어 `worker_done_recorded`에서 거부됐다.
+  - 정확 handle 개별 종료 뒤 해당 8개 handle은 `terminal list`에서 사라졌지만, `roster resolve`는 계속 `live=true`를 반환했다.
+- 요구 사항:
+  - 공식 실패 보고로 정산된 `failed` 카드를 "실행 중"과 구분해 안전한 retire 대상으로 인정한다.
+  - 구세대 capability 누락 이력은 가짜 `worker_done`을 만들지 않고, 수동 완료 근거·원 Dispatch·담당 pane·증거 경로를 검증하는 별도 이력 복구 절차로 정리한다.
+  - `terminal list`에 없는 pane을 `roster resolve live=true`로 보고하지 않는다. pane·PTY·현재 handle을 실시간 대조하고 불일치는 fail-closed 영수증으로 노출한다.
+- 가드레일: DB 직접 수정, 다른 완료 task 대입, 완료 보고 위조, 이름 기반 kill, worktree 광역 stop 금지. `project+board+role+pane+run+task`와 증거 경로를 끝까지 고정한다.
+- 검증 기준: (1) 공식 `worker_done --outcome failed` 카드 retire 성공 (2) 실제 진행 중 카드 retire 거부 (3) 승인된 구세대 누락 이력 복구 후 retire 성공 (4) terminal 부재·roster 잔존 상태에서 `resolve`가 `live=false` 또는 명시적 stale 오류 반환.
+
 ## 결함 E 검증 가설 추가 (2026-08-04 kyle, 슈퍼감독 기록)
 
 - Computer Use AXIsProcessTrusted false의 검증 가설: **"같은 앱이 스스로를 조작하지 못하는 제약"**에 막혔을 가능성 (kyle 제안). 운영·후보 문맥 모두 거부였던 실측과 부합하는지 결함 E 카드(task_08fc56ec260a)에서 함께 검증.
 - 대안 경로: Computer Use를 Orca 내장 대신 **Codex 쪽을 거쳐** 실행하는 방식도 후보 — 추후 검증 (kyle).
+
+## 우편함 시각화 + 스레드 일원화 (2026-08-05 kyle 아이디어, 슈퍼감독 기록)
+
+- Why: 우편(Run 수신함) 소통에서 낱장 send는 대화의 이어짐이 안 보인다. 스레드(`thread_id`)는 이미 장부에 있지만 관습적으로만 쓰이고, 이번 판에서 "관문 질문 → 슈퍼 결정 → 적용 보고" 추적이 스레드 유무에 따라 편의가 크게 갈렸다.
+- [ ] 우편함 시각화 작업 시 함께 검토: **스레드를 소통의 기본 단위(플래그)로 일원화** — 질문·결정·적용 계열 편지는 thread_id 필수화 후보, UI는 스레드 묶음으로 표시.
+- [ ] 관련 관습(슈퍼감독 실전): 관문 해소는 "슈퍼 Run 스레드 답장 + 프로젝트 Run 공식 전달"을 한 쌍으로 — 스레드(대화 묶음)와 Run(수신함)은 별개 축이므로 둘 다 챙겨야 배달·추적이 모두 성립.
