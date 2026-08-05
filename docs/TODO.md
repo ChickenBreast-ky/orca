@@ -141,11 +141,18 @@
 - [ ] 우편함 시각화 작업 시 함께 검토: **스레드를 소통의 기본 단위(플래그)로 일원화** — 질문·결정·적용 계열 편지는 thread_id 필수화 후보, UI는 스레드 묶음으로 표시.
 - [ ] 관련 관습(슈퍼감독 실전): 관문 해소는 "슈퍼 Run 스레드 답장 + 프로젝트 Run 공식 전달"을 한 쌍으로 — 스레드(대화 묶음)와 Run(수신함)은 별개 축이므로 둘 다 챙겨야 배달·추적이 모두 성립.
 
-## Orca dispatch 제품 수준 라우팅 영수증 하드 강제 (2026-08-05, gate_k_pin_receipt_scope_r3 이관, 슈퍼감독 기록)
+## Orca dispatch 제품 수준 라우팅 영수증 하드 강제(B안, gate_k_pin_receipt_scope, 슈퍼감독 기록)
 
-- Why: 스킬 dispatch-safe를 우회한 raw orchestration dispatch도 라우터 선택 없이 실행되지 못하게 제품 경계에서 차단한다. (router-improvement-1 판은 위협 모델상 A안 "스킬 2단계 영수증"으로 완결 — kyle 결재 슈퍼감독 운영 판단, 원 지시 msg_8de55f6d81ab)
-- 범위 후보: 사전 발령 ID 예약 또는 서명된 선택 영수증 / dispatch API의 영수증 검증·원자적 소비 / 유효 영수증 없는 raw dispatch 거부 / task·run·pane·model 바인딩 / 재사용(replay)·만료 방지 / 독립 적대 검수.
-- [ ] 차기 orca-kyle 판 제품 카드로 승격 여부는 kyle 결정.
+- Why: 스킬 dispatch-safe를 우회한 raw orchestration dispatch도 라우터 선택 없이 실행되지 못하게 제품(Orca) 경계에서 차단한다. R8 독립 검수가 "스킬 계층은 실제 대상 터미널 모델 결속과 raw dispatch 차단을 보증할 수 없다"고 판정(치명 1·치명 2)함에 따라, 위협 모델이 A안(스킬 2단계 영수증)에서 B안(제품 경계 하드 강제)으로 이관됐다(B안 이관 2026-08-06). A안 종결·descope 원 지시는 msg_8de55f6d81ab·msg_6c64bfafd352, 슈퍼감독 운영 판단.
+- 제품(Orca) 책임(발령 전 단계):
+  - 발령 전 dispatchId 예약 — `orchestration dispatch`가 실행 전에 `ctx_` ID를 발급하고 그 ID를 영수증에 결속한 뒤에만 실제 발령을 수행한다.
+  - 제품 키 서명/MAC 영수증 — 영수증을 제품 키로 서명(또는 MAC)해 스킬 계층 위조를 무력화한다.
+  - 영수증 없는 raw orchestration dispatch 거부 — 유효 영수증 없는 `orchestration dispatch` 직접 호출을 제품이 거부한다(재사용(replay)·만료 방지 포함).
+  - dispatch 응답에 대상 터미널의 실제 model/effort 반환 — 영수증 주장값이 아니라 실제 발령 모델·effort를 돌려준다. 이것이 없으면 아래 스킬 한계는 어느 스킬 구현으로도 닫히지 않는다.
+- 스킬(kyle-agent-skills) 책임(범위 축소): 안정 키 라우터 경유 증명 + 발령 뒤 append-only 감사 기록까지만. model/effort mismatch·actual_unreported는 감사에 사후 기록으로 남기되 **발령 거부 조건이 아니다**(D1 축소 명세, kyle-agent-skills routing-pin-contract.md 절 5.3.7).
+- 검증 철학: raw dispatch 거부는 task·run·pane·model 바인딩과 재사용·만료 방지를 포함하고, 제품 카드 구현 뒤 독립 적대 검수로 닫는다.
+- 선행 근거: kyle-agent-skills R8 독립 검수 치명 1(model/effort가 필수도 아니고 실제 터미널과 묶이지도 않음)·치명 2(휘발 6키 라이브 재계산 불완전 + 발급 experiment-key가 소비 경로에서 유실), 및 D1 축소 절 5.3.7. 증거 보고서는 본체 레포 kyle-agent-skills의 `.orca/evidence/router-improvement-1/track-k-code-r8-review/`, `track-k-descope-spec/`, `track-k-descope-implementation/`.
+- 범위 밖: 본 카드는 이 TODO 항목 정리만 담당한다. 제품 구현과 push는 이 카드 범위 밖이며, 차기 orca-kyle 판 제품 카드로 kyle가 승격 여부를 결정한다.
 
 ## gate-create의 관문-편지 원자화 (2026-08-05 실사고 gate_404bcf8d5e01, 슈퍼감독 기록)
 
