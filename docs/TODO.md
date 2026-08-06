@@ -159,3 +159,14 @@
 - Why: 감독이 decision_gate를 장부에 만들고 슈퍼 Run 편지 발송을 누락하면, 판 전체가 "정당한 대기"로 위장된 채 무기한 멈춘다 (실사고: E 관문 편지 미발송 → kyle 육안 발견까지 대기). 규칙 문장은 언젠가 빼먹힌다 — 절차를 코드로 옮긴다.
 - [ ] `orchestration gate-create`가 관문 생성과 동시에 지정 상위 Run(예: --notify-run 또는 Run 계층 설정)으로 decision_gate 편지를 자동 발송 — 생성·통지를 원자적 한 동작으로. 편지 발송 실패 시 관문 생성도 실패(fail-closed).
 - 임시 방어(코드 전까지): companion "고아 관문 NUDGE" (kyle-agent-skills TODO 2026-08-05 항목 — pending gate 존재 + 대응 편지 부재 → 감독 1회 깨움).
+
+## companion 위임 소비 토큰 — pane 위장 요구 제거 (2026-08-06 kyle 승인, 슈퍼감독 기록)
+
+- Why: companion이 감독 Run 우편함을 소비하려면 "감독 pane 안에서 실행 중"(`ORCA_TERMINAL_HANDLE` == 감독 handle)이어야 하는 현행 설계가, env로 신분을 위장해 상주하는 구조를 강제한다. 이 위장 신분은 앱 교체·재기동 경계에서 반드시 낡는다.
+- 근거 (2026-08-05 실사고 2건, router-improvement-1 판):
+  1. 앱 교체 직후 기동된 companion이 교체 전 pane handle(term_5dbfcd04)을 env로 물고 상주 — 매 주기 `consumer_owner_mismatch`로 배달·깨우기 전면 불능 1시간 반 (worker_done 미배달, kyle 육안 발견). 수리 지시: 슈퍼 Run msg_6dd62e79a5e3.
+  2. 수리 재기동에서도 PPID=1 데몬화 과정에서 env 누락(`actual=missing`)으로 같은 fail-closed 재발 — 감독 하네스의 셸 도구가 pane env를 승계하지 않을 수 있음. 수리 지시: msg_1f22db96b486.
+  - 교훈: "프로세스 살아있음 ≠ companion 정상". env 신분 요구가 있는 한 tmux·launchd 등 어떤 상주 방식으로 바꿔도 "env를 어떻게 정확히 물려주나" 문제가 남는다 (정적 plist에 handle을 박으면 낡은 신분을 오히려 굳힘).
+- [ ] 제품이 companion에게 **위임 소비 자격**을 발급한다 — dispatch capability처럼 "이 Run의 Delivery를 감독 대신 소비·ack해도 된다"는 토큰(Run 단위, 감독이 발급, 만료·회수 가능). companion은 pane env 신분 없이 토큰만으로 `orchestration check` 소비가 가능해진다.
+- [ ] 토큰 검증은 receipt-hardening-1 판이 확정한 "제품 검증 서명" 경계(앱 프로세스 보유 키, msg_502b46a75ed7)와 같은 축을 재사용한다.
+- 범위 밖: 본 항목은 기록만. 제품 구현 승격은 receipt-hardening-1 판 B안 완료 후 kyle이 결정.
