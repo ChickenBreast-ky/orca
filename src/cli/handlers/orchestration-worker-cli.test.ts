@@ -55,7 +55,8 @@ describe('orchestration worker-start CLI contract', () => {
         ['timeout-ms', '90000'],
         ['run', 'run_1'],
         ['from', 'term_coord'],
-        ['retry-request', 'request_1']
+        ['retry-request', 'request_1'],
+        ['receipt', 'dummy_receipt']
       ])
     )
 
@@ -77,7 +78,8 @@ describe('orchestration worker-start CLI contract', () => {
         timeoutMs: 90_000,
         run: 'run_1',
         from: 'term_coord',
-        devMode: false
+        devMode: false,
+        receipt: 'dummy_receipt'
       },
       { orchestrationRequestId: 'request_1' }
     )
@@ -99,7 +101,8 @@ describe('orchestration worker-start CLI contract', () => {
       new Map<string, string | boolean>([
         ['task', 'task_1'],
         ['agent', 'codex'],
-        ['from', 'term_coord']
+        ['from', 'term_coord'],
+        ['receipt', 'dummy_receipt']
       ])
     )
 
@@ -122,7 +125,8 @@ describe('orchestration worker-start CLI contract', () => {
       flags: new Map<string, string | boolean>([
         ['task', 'task_1'],
         ['agent', 'codex'],
-        ['from', 'term_coord']
+        ['from', 'term_coord'],
+        ['receipt', 'dummy_receipt']
       ]),
       client: { call: callMock },
       cwd: '/tmp/repo',

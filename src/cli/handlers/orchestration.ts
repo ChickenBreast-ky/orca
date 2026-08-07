@@ -947,7 +947,7 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
       timeoutMs: getOptionalPositiveIntegerValueFlag(flags, 'timeout-ms'),
       run: getOptionalStringFlag(flags, 'run'),
       from: await resolveCoordinatorTerminalHandle(flags, cwd, client),
-      devMode: isDevCliInvocation(),
+     devMode: isDevCliInvocation(),
       ...(workerRole
         ? {
             roleRoster: {
@@ -958,7 +958,8 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
               ...(workerRoleReportsTo ? { reportsTo: workerRoleReportsTo } : {})
             }
           }
-        : {})
+        : {}),
+      receipt: getRequiredStringFlag(flags, 'receipt')
     })
     if (result.result.state !== 'ready') {
       process.exitCode = 1
@@ -1126,6 +1127,10 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
     const returnPreamble = flags.has('return-preamble') ? true : undefined
     // Why: --to is only required for non-dry-run; the RPC handler re-enforces.
     const to = dryRun ? getOptionalStringFlag(flags, 'to') : getRequiredStringFlag(flags, 'to')
+    // Why: --receipt is required for any real dispatch (product-verified gate); dry-run previews without one.
+    const receipt = dryRun
+      ? getOptionalStringFlag(flags, 'receipt')
+      : getRequiredStringFlag(flags, 'receipt')
     const result = await callMutation<{
       dispatch: { id: string; task_id: string; status: string } | null
       injected?: boolean
@@ -1139,7 +1144,8 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
       inject: flags.has('inject') ? true : undefined,
       dryRun,
       returnPreamble,
-      devMode: isDevCliInvocation()
+      devMode: isDevCliInvocation(),
+      receipt
     })
     printResult(result, json, (r) => {
       if (r.dryRun) {
@@ -1147,6 +1153,51 @@ export const ORCHESTRATION_HANDLERS: Record<string, CommandHandler> = {
       }
       const base = `Dispatched ${r.dispatch?.task_id} -> ${r.dispatch?.id} [${r.dispatch?.status}]`
       return r.preamble ? `${base}\n\n--- Preamble ---\n${r.preamble}` : base
+    })
+  },
+
+  'orchestration dispatch reserve': async ({ flags, client, cwd, json }) => {
+    const from = await resolveCoordinatorTerminalHandle(flags, cwd, client)
+    const unavailableProvider = flags.get('unavailable-provider')
+    const unavailableProviders = Array.isArray(unavailableProvider)
+      ? unavailableProvider.join(',')
+      : typeof unavailableProvider === 'string'
+        ? unavailableProvider
+        : undefined
+    const result = await callMutation<{
+      dispatchId: string
+      receipt: unknown
+      routing: unknown
+      providersPinSha: string
+      selectorPinSha: string
+    }>(client, flags, 'orchestration.dispatchReserve', {
+      task: getRequiredStringFlag(flags, 'task'),
+      to: getOptionalStringFlag(flags, 'to'),
+      from,
+      run: getOptionalStringFlag(flags, 'run'),
+      taskSize: getOptionalStringFlag(flags, 'task-size') as 'heavy' | 'light' | undefined,
+      unavailableProviders,
+      experimentKey: getOptionalStringFlag(flags, 'experiment-key'),
+      quota: getOptionalStringFlag(flags, 'quota'),
+      devMode: isDevCliInvocation()
+    })
+    printResult(result, json, (r) => {
+      const routing = r.routing as
+        | {
+            developer: { provider: string; model: string }
+            reviewer: { provider: string; model: string }
+          }
+        | undefined
+      const dev = routing?.developer
+        ? `${routing.developer.provider}/${routing.developer.model}`
+        : 'unknown'
+      const rev = routing?.reviewer
+        ? `${routing.reviewer.provider}/${routing.reviewer.model}`
+        : 'unknown'
+      const base = `Reserved ${r.dispatchId} (dev=${dev} review=${rev})`
+      return json
+        ? base
+        : `${base}\n\n--- Receipt (pass to --receipt) ---\n${JSON.stringify(r.receipt)}`
     })
   },
 

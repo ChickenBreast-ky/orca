@@ -18,6 +18,7 @@ export async function startFederatedWorker(args: {
   db: OrchestrationDb
   runId: string
   task: { id: string; spec: string; status: string }
+  reservedDispatchId?: string
   orchestrationMutation?: {
     callerFingerprint: string
     requestId: string
@@ -26,6 +27,7 @@ export async function startFederatedWorker(args: {
   }
 }): Promise<unknown> {
   const { params, runtime, db, task, runId, orchestrationMutation } = args
+  const reservedDispatchId = args.reservedDispatchId
   if (!orchestrationMutation) {
     throw new OrchestrationError(
       'invalid_argument',
@@ -91,6 +93,8 @@ export async function startFederatedWorker(args: {
     },
     runtimeEpoch: runtime.getRuntimeId(),
     mutationReceipt: orchestrationMutation,
+    // Why: reuse the home-reserved ctx_ so federated dispatchId == reserved ctx_ (finding 1/3).
+    reservedDispatchId,
     federation: {
       environmentId: server.environmentId,
       environmentName: server.name,

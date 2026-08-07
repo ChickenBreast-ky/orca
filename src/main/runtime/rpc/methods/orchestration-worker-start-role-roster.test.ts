@@ -56,6 +56,13 @@ describe('orchestration worker-start role roster registration', () => {
 
   afterEach(() => db.close())
 
+  async function reserveWorkerReceipt(taskId: string): Promise<string> {
+    const method = ORCHESTRATION_METHODS.find((c) => c.name === 'orchestration.dispatchReserve')!
+    const params = method.params!.parse({ task: taskId, run: runId, from: 'term_coord' })
+    const reserved = (await method.handler(params, { runtime })) as { receipt: unknown }
+    return JSON.stringify(reserved.receipt)
+  }
+
   async function startWorker(overrides: Record<string, unknown> = {}) {
     const task = db.createTask({ spec: 'role roster worker', runId })
     const method = ORCHESTRATION_METHODS.find(
@@ -68,6 +75,7 @@ describe('orchestration worker-start role roster registration', () => {
       task: task.id,
       from: 'term_coord',
       terminal: 'term_worker',
+      receipt: await reserveWorkerReceipt(task.id),
       ...overrides
     })
     const result = (await method.handler(params, { runtime })) as { state: string }

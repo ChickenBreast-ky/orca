@@ -112,6 +112,16 @@ describe('orchestration federation', () => {
         repo: 'id:windows-repo',
         name: 'windows-audit',
         agent: 'codex',
+        receipt: JSON.stringify(
+          (
+            ORCHESTRATION_METHODS.find((c) => c.name === 'orchestration.dispatchReserve')!.handler(
+              ORCHESTRATION_METHODS.find(
+                (c) => c.name === 'orchestration.dispatchReserve'
+              )!.params!.parse({ task: taskId, from: 'term_coord' }),
+              { runtime: homeRuntime }
+            ) as { receipt: unknown }
+          ).receipt
+        ),
         ...overrides
       }
     }

@@ -2,6 +2,7 @@ import type { TuiAgent } from '../../../../shared/types'
 import { buildDispatchPreamble } from '../../orchestration/preamble'
 import { OrchestrationError } from '../../orchestration/orchestration-error'
 import { prepareWorkerRoster } from '../../orchestration/role-roster-creation'
+import { consumeProductVerifiedReceipt } from '../../orchestration/dispatch-receipt-gate'
 import { defineMethod, type RpcMethod } from '../core'
 import { startFederatedWorker } from './orchestration-federated-worker-start'
 import { assertOrchestrationWorktreeCreationSupported } from './orchestration-folder-worktree-placement'
@@ -46,6 +47,17 @@ export const ORCHESTRATION_WORKER_START_METHODS: RpcMethod[] = [
         )
       }
 
+      // Phase 1 (contract 5): consume the product-verified receipt BEFORE any
+      // DB dispatch, worktree, terminal, or remote side-effect. A missing/
+      // malformed/forged/expired receipt must fail-closed with zero effects.
+      // Terminal binding is phase 2 (dispatch capability after terminal creation).
+      const receiptReservation = consumeProductVerifiedReceipt({
+        db,
+        receipt: params.receipt,
+        runId: run.id,
+        taskId: task.id
+      })
+
       if (params.on) {
         return startFederatedWorker({
           params,
@@ -53,7 +65,8 @@ export const ORCHESTRATION_WORKER_START_METHODS: RpcMethod[] = [
           db,
           runId: run.id,
           task,
-          orchestrationMutation
+          orchestrationMutation,
+          reservedDispatchId: receiptReservation.dispatchId
         })
       }
 
@@ -118,7 +131,9 @@ export const ORCHESTRATION_WORKER_START_METHODS: RpcMethod[] = [
         retryOf: params.retryOf,
         startOptions,
         runtimeEpoch: runtime.getRuntimeId(),
-        mutationReceipt: orchestrationMutation
+        mutationReceipt: orchestrationMutation,
+        // Why: reuse the reserved ctx_ so worker dispatchId == reserved ctx_ (finding 3).
+        reservedDispatchId: receiptReservation.dispatchId
       })
       const effects: WorkerEffect[] = []
       if (resolvedWorktree) {

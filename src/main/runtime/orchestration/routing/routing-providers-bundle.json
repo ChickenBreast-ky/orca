@@ -1,0 +1,348 @@
+{
+  "providers": [
+    {
+      "id": "kimi",
+      "family": "kimi",
+      "quotaKey": "kimi",
+      "enabled": true,
+      "weeklyReservePercent": 10,
+      "models": [
+        {
+          "id": "kimi/k3[1m]",
+          "role": "developer",
+          "effort": "low",
+          "quality": 82,
+          "harness": "codex",
+          "taskClassPrior": {
+            "research": 8
+          },
+          "command": "codex -p orca-worker --model 'kimi/k3[1m]' -c model_reasoning_effort=\"low\""
+        },
+        {
+          "id": "kimi/k3[1m]",
+          "role": "developer",
+          "effort": "max",
+          "quality": 85,
+          "harness": "codex",
+          "taskClassPrior": {
+            "research": 8
+          },
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "reviewerFamilyAllowlist": ["openai", "anthropic"],
+          "command": "codex -p orca-worker --model 'kimi/k3[1m]' -c model_reasoning_effort=\"max\""
+        },
+        {
+          "id": "kimi/k3[1m]",
+          "role": "reviewer",
+          "effort": "high",
+          "quality": 20,
+          "harness": "codex",
+          "taskClassPrior": {},
+          "command": "codex -p orca-analyst --model 'kimi/k3[1m]' -c model_reasoning_effort=\"high\""
+        },
+        {
+          "id": "kimi/k3[1m]",
+          "role": "reviewer",
+          "effort": "max",
+          "quality": 75,
+          "harness": "codex",
+          "taskClassPrior": {},
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "command": "codex -p orca-analyst --model 'kimi/k3[1m]' -c model_reasoning_effort=\"max\""
+        }
+      ]
+    },
+    {
+      "id": "zai",
+      "family": "zai",
+      "quotaKey": "zai",
+      "enabled": true,
+      "weeklyReservePercent": 5,
+      "models": [
+        {
+          "id": "zai/glm-5.2",
+          "role": "developer",
+          "effort": "medium",
+          "quality": 88,
+          "harness": "codex",
+          "taskClassPrior": {
+            "targeted_implementation": 8,
+            "frontend": 8,
+            "architecture": 6,
+            "docs_config": 4
+          },
+          "command": "codex -p orca-worker --model zai/glm-5.2 -c model_reasoning_effort=\"medium\"",
+          "enabled": false
+        },
+        {
+          "id": "zai/glm-5.2",
+          "role": "developer",
+          "effort": "max",
+          "quality": 90,
+          "harness": "codex",
+          "taskClassPrior": {
+            "targeted_implementation": 8,
+            "frontend": 8,
+            "architecture": 6,
+            "docs_config": 4
+          },
+          "reviewerFamilyAllowlist": ["openai", "anthropic"],
+          "command": "codex -p orca-worker --model zai/glm-5.2 -c model_reasoning_effort=\"max\""
+        },
+        {
+          "id": "zai/glm-5.2",
+          "role": "reviewer",
+          "effort": "high",
+          "quality": 72,
+          "harness": "codex",
+          "taskClassPrior": {},
+          "command": "codex -p orca-analyst --model zai/glm-5.2 -c model_reasoning_effort=\"high\""
+        },
+        {
+          "id": "zai/glm-5.2",
+          "role": "reviewer",
+          "effort": "max",
+          "quality": 74,
+          "harness": "codex",
+          "taskClassPrior": {},
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "command": "codex -p orca-analyst --model zai/glm-5.2 -c model_reasoning_effort=\"max\""
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "family": "openai",
+      "quotaKey": "openai",
+      "enabled": true,
+      "weeklyReservePercent": 20,
+      "models": [
+        {
+          "id": "gpt-5.6-luna",
+          "role": "developer",
+          "effort": "xhigh",
+          "quality": 84,
+          "harness": "codex",
+          "taskClassPrior": {
+            "research": 7,
+            "docs_config": 7,
+            "qa": 6,
+            "targeted_implementation": 3,
+            "security": -5,
+            "concurrency": -5
+          },
+          "command": "codex -p orca-worker --model gpt-5.6-luna -c model_reasoning_effort=\"xhigh\""
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "role": "developer",
+          "effort": "max",
+          "quality": 86,
+          "harness": "codex",
+          "taskClassPrior": {
+            "research": 8,
+            "docs_config": 8,
+            "qa": 7,
+            "targeted_implementation": 4,
+            "security": -6,
+            "concurrency": -6
+          },
+          "experimental": true,
+          "experimentSharePercent": 10,
+          "reviewerFamilyAllowlist": ["openai", "anthropic"],
+          "command": "codex -p orca-worker --model gpt-5.6-luna -c model_reasoning_effort=\"max\""
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "role": "developer",
+          "effort": "high",
+          "quality": 86,
+          "enabled": false,
+          "harness": "codex",
+          "taskClassPrior": {
+            "security": 4,
+            "concurrency": 4,
+            "bugfix": 3
+          },
+          "command": "codex -p orca-worker --model gpt-5.6-terra -c model_reasoning_effort=\"high\""
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "role": "reviewer",
+          "effort": "max",
+          "quality": 96,
+          "harness": "codex",
+          "taskClassPrior": {
+            "research": 4,
+            "docs_config": 4,
+            "qa": 3,
+            "security": -6,
+            "concurrency": -6
+          },
+          "command": "codex -p orca-analyst --model gpt-5.6-luna -c model_reasoning_effort=\"max\""
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "role": "reviewer",
+          "effort": "medium",
+          "quality": 98,
+          "harness": "codex",
+          "taskClassPrior": {
+            "security": 5,
+            "concurrency": 5,
+            "architecture": 3
+          },
+          "command": "codex -p orca-analyst --model gpt-5.6-sol -c model_reasoning_effort=\"medium\""
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "role": "reviewer",
+          "effort": "high",
+          "quality": 99,
+          "harness": "codex",
+          "taskClassPrior": {
+            "security": 5,
+            "concurrency": 5,
+            "architecture": 3
+          },
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "command": "codex -p orca-analyst --model gpt-5.6-sol -c model_reasoning_effort=\"high\""
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "role": "reviewer",
+          "effort": "xhigh",
+          "quality": 99.3,
+          "harness": "codex",
+          "taskClassPrior": {
+            "security": 5,
+            "concurrency": 5,
+            "architecture": 3
+          },
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "command": "codex -p orca-analyst --model gpt-5.6-sol -c model_reasoning_effort=\"xhigh\""
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "role": "reviewer",
+          "effort": "max",
+          "quality": 99.6,
+          "harness": "codex",
+          "taskClassPrior": {
+            "security": 5,
+            "concurrency": 5,
+            "architecture": 3
+          },
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "command": "codex -p orca-analyst --model gpt-5.6-sol -c model_reasoning_effort=\"max\""
+        }
+      ]
+    },
+    {
+      "id": "anthropic",
+      "family": "anthropic",
+      "quotaKey": "anthropic",
+      "enabled": true,
+      "weeklyReservePercent": 15,
+      "models": [
+        {
+          "id": "opus",
+          "role": "developer",
+          "effort": "medium",
+          "quality": 97,
+          "harness": "claude-code",
+          "taskClassPrior": {
+            "architecture": 5,
+            "frontend": 4,
+            "research": 2
+          },
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "reviewerFamilyAllowlist": ["openai"],
+          "command": "claude --model opus --effort medium --dangerously-skip-permissions"
+        },
+        {
+          "id": "opus",
+          "role": "developer",
+          "effort": "high",
+          "quality": 98,
+          "harness": "claude-code",
+          "taskClassPrior": {
+            "architecture": 5,
+            "frontend": 4,
+            "research": 2
+          },
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "reviewerFamilyAllowlist": ["openai"],
+          "command": "claude --model opus --effort high --dangerously-skip-permissions"
+        },
+        {
+          "id": "opus",
+          "role": "developer",
+          "effort": "xhigh",
+          "quality": 99,
+          "harness": "claude-code",
+          "taskClassPrior": {
+            "architecture": 5,
+            "frontend": 4,
+            "research": 2
+          },
+          "experimental": true,
+          "experimentSharePercent": 20,
+          "reviewerFamilyAllowlist": ["openai"],
+          "command": "claude --model opus --effort xhigh --dangerously-skip-permissions"
+        },
+        {
+          "id": "opus",
+          "role": "reviewer",
+          "effort": "medium",
+          "quality": 97,
+          "enabled": false,
+          "harness": "claude-code",
+          "taskClassPrior": {
+            "architecture": 3,
+            "frontend": 3
+          },
+          "command": "claude --model opus --effort medium --dangerously-skip-permissions"
+        },
+        {
+          "id": "fable",
+          "role": "reviewer",
+          "effort": "medium",
+          "quality": 97,
+          "harness": "claude-code",
+          "taskClassPrior": {},
+          "lastResortOnly": true,
+          "command": "claude --model fable --effort medium --dangerously-skip-permissions"
+        },
+        {
+          "id": "fable",
+          "role": "reviewer",
+          "effort": "high",
+          "quality": 98,
+          "harness": "claude-code",
+          "taskClassPrior": {},
+          "lastResortOnly": true,
+          "command": "claude --model fable --effort high --dangerously-skip-permissions"
+        },
+        {
+          "id": "fable",
+          "role": "reviewer",
+          "effort": "xhigh",
+          "quality": 99,
+          "harness": "claude-code",
+          "taskClassPrior": {},
+          "lastResortOnly": true,
+          "command": "claude --model fable --effort xhigh --dangerously-skip-permissions"
+        }
+      ]
+    }
+  ]
+}

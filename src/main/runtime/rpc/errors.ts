@@ -70,6 +70,18 @@ const STRUCTURED_RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   'dispatch_not_found',
   'dispatch_run_mismatch',
   'dispatch_inactive',
+  // Why: product-verified dispatch receipt gate codes (receipt-hardening-1).
+  // Without these the structured codes collapse to runtime_error, so CLI and
+  // automation cannot distinguish replay, forgery, expiry, binding, and no-pair
+  // failures — all are refused before side effects regardless.
+  'receipt_missing',
+  'dispatch_not_reserved',
+  'receipt_signature_invalid',
+  'receipt_key_rotated',
+  'receipt_expired',
+  'receipt_binding_mismatch',
+  'routing_no_pair',
+  'providers_invariant_violation',
   'worker_identity_changed',
   'cursor_invalid',
   'cursor_dispatch_mismatch',

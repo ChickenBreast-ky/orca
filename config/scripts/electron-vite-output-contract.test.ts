@@ -1,4 +1,5 @@
 import * as nodeFs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import * as nodePath from 'node:path'
 import { join } from 'node:path'
@@ -93,6 +94,100 @@ describe('Electron Vite output contract', () => {
     expect(external('@xterm/addon-serialize', undefined, false)).toBe(false)
     expect(external('zod', undefined, false)).toBe(false)
     expect(electronViteConfig.main?.build?.externalizeDeps?.exclude).toContain('zod')
+  })
+
+  it('emits the vendored routing-providers-bundle.json adjacent to the main bundle', () => {
+    // Why: this helper finds the routing plugin and invokes buildStart with a
+    // mocked emitFile. Reused by the cwd-independence test.
+    function invokeRoutingPluginBuildStart() {
+      const plugins = electronViteConfig.main?.build?.rollupOptions?.plugins
+      if (!Array.isArray(plugins)) {
+        throw new Error('Expected main-process plugins array')
+      }
+      const routingPlugin = (plugins as readonly { name?: string }[]).find(
+        (plugin) => plugin?.name === 'orca-routing-providers-bundle'
+      )
+      if (!routingPlugin || typeof routingPlugin.buildStart !== 'function') {
+        throw new Error('routing-providers-bundle asset plugin is missing from the main build')
+      }
+      const emittedAssets: { fileName?: string; source?: string | Uint8Array }[] = []
+      const mockContext = {
+        emitFile(asset: { fileName?: string; source?: string | Uint8Array }) {
+          emittedAssets.push(asset)
+          return 'asset-id'
+        }
+      }
+      routingPlugin.buildStart.call(mockContext)
+      return emittedAssets
+    }
+
+    // Why: routing-bundle.ts resolves the providers snapshot via
+    // readFileSync(join(__dirname, 'routing-providers-bundle.json')). After
+    // electron-vite bundles main to out/main/, __dirname resolves there, so the
+    // plugin must emit the JSON as a sibling asset — no manual copy step.
+    const emittedAssets = invokeRoutingPluginBuildStart()
+    expect(emittedAssets).toHaveLength(1)
+    expect(emittedAssets[0].fileName).toBe('routing-providers-bundle.json')
+
+    const sourceContent = readFileSync(
+      nodePath.resolve('src/main/runtime/orchestration/routing/routing-providers-bundle.json'),
+      'utf8'
+    )
+    expect(String(emittedAssets[0].source)).toBe(sourceContent)
+  })
+
+  it('resolves routing-providers-bundle.json from the config file location, not cwd', () => {
+    // Why: the plugin must not depend on process.cwd(). If invoked from a
+    // different directory it must still find the JSON relative to the config
+    // file and emit it with the correct SHA.
+    const originalCwd = process.cwd()
+    const tempCwd = mkdtempSync(join(tmpdir(), 'orca-config-cwd-'))
+    process.chdir(tempCwd)
+    try {
+      const emittedAssets: { fileName?: string; source?: string | Uint8Array }[] = []
+      const plugins = electronViteConfig.main?.build?.rollupOptions?.plugins
+      if (!Array.isArray(plugins)) {
+        throw new Error('Expected main-process plugins array')
+      }
+      const routingPlugin = (
+        plugins as readonly { name?: string; buildStart?: (...args: unknown[]) => void }[]
+      ).find((plugin) => plugin?.name === 'orca-routing-providers-bundle')
+      if (!routingPlugin || typeof routingPlugin.buildStart !== 'function') {
+        throw new Error('routing-providers-bundle asset plugin is missing from the main build')
+      }
+      routingPlugin.buildStart.call({
+        emitFile(asset: { fileName?: string; source?: string | Uint8Array }) {
+          emittedAssets.push(asset)
+          return 'asset-id'
+        }
+      })
+
+      expect(emittedAssets).toHaveLength(1)
+      expect(emittedAssets[0].fileName).toBe('routing-providers-bundle.json')
+
+      const sourceContent = readFileSync(
+        nodePath.resolve(
+          originalCwd,
+          'src/main/runtime/orchestration/routing/routing-providers-bundle.json'
+        ),
+        'utf8'
+      )
+      expect(String(emittedAssets[0].source)).toBe(sourceContent)
+      const sha = createHash('sha256').update(sourceContent, 'utf8').digest('hex')
+      expect(sha).toBe('dce34df66420c0aca3b3165b7faec5c6359cd99c5a307a7a6d38d1df8ffe1b05')
+    } finally {
+      process.chdir(originalCwd)
+    }
+  })
+
+  it('matches the pinned SHA-256 declared in routing-bundle.ts', () => {
+    const sourceContent = readFileSync(
+      nodePath.resolve('src/main/runtime/orchestration/routing/routing-providers-bundle.json'),
+      'utf8'
+    )
+    const sha = createHash('sha256').update(sourceContent, 'utf8').digest('hex')
+    // Why: ROUTING_PROVIDERS_PIN.blobSha in routing-bundle.ts pins this exact hash.
+    expect(sha).toBe('dce34df66420c0aca3b3165b7faec5c6359cd99c5a307a7a6d38d1df8ffe1b05')
   })
 
   it('exits when a static import fails before source error guards load', () => {
