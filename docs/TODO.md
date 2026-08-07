@@ -143,15 +143,19 @@
 
 ## Orca dispatch 제품 수준 라우팅 영수증 하드 강제(B안, gate_k_pin_receipt_scope, 슈퍼감독 기록)
 
-- Why: 스킬 dispatch-safe를 우회한 raw orchestration dispatch도 라우터 선택 없이 실행되지 못하게 제품(Orca) 경계에서 차단한다. R8 독립 검수가 "스킬 계층은 실제 대상 터미널 모델 결속과 raw dispatch 차단을 보증할 수 없다"고 판정(치명 1·치명 2)함에 따라, 위협 모델이 A안(스킬 2단계 영수증)에서 B안(제품 경계 하드 강제)으로 이관됐다(B안 이관 2026-08-06). A안 종결·descope 원 지시는 msg_8de55f6d81ab·msg_6c64bfafd352, 슈퍼감독 운영 판단.
+- Why: 스킬 dispatch-safe를 우회한 raw orchestration dispatch도 라우터 선택 없이 실행되지 못하게 제품(Orca) 경계에서 차단한다. 이는 공격자 사례만이 아니다. 2026-08-07 정상 운영 중인 감독도 선택을 발령에 묶지 않는 지름길을 써 8건이 격리됐고, 정책 밖 모델이 실행될 수 있었다. R8 독립 검수가 "스킬 계층은 실제 대상 터미널 모델 결속과 raw dispatch 차단을 보증할 수 없다"고 판정(치명 1·치명 2)함에 따라, 위협 모델이 A안(스킬 2단계 영수증)에서 B안(제품 경계 하드 강제)으로 이관됐다(B안 이관 2026-08-06). A안 종결·descope 원 지시는 msg_8de55f6d81ab·msg_6c64bfafd352, 슈퍼감독 운영 판단.
 - 제품(Orca) 책임(발령 전 단계):
   - 발령 전 dispatchId 예약 — `orchestration dispatch`가 실행 전에 `ctx_` ID를 발급하고 그 ID를 영수증에 결속한 뒤에만 실제 발령을 수행한다.
   - 제품 키 서명/MAC 영수증 — 영수증을 제품 키로 서명(또는 MAC)해 스킬 계층 위조를 무력화한다.
-  - 영수증 없는 raw orchestration dispatch 거부 — 유효 영수증 없는 `orchestration dispatch` 직접 호출을 제품이 거부한다(재사용(replay)·만료 방지 포함).
-  - dispatch 응답에 대상 터미널의 실제 model/effort 반환 — 영수증 주장값이 아니라 실제 발령 모델·effort를 돌려준다. 이것이 없으면 아래 스킬 한계는 어느 스킬 구현으로도 닫히지 않는다.
+  - 영수증 없는 raw orchestration dispatch 거부 — 유효 영수증 없는 `orchestration dispatch` 직접 호출을 제품이 거부한다(재사용(replay)·만료 방지 포함). 특히 selection/round ID가 발령에 결속되지 않은 요청은 부작용 전에 제품 경계에서 막는다.
+  - dispatch 응답에 대상 터미널의 실제 model/effort 반환 — 영수증 주장값이 아니라 실제 발령 모델·effort를 돌려준다. 선택값과 actual model/effort를 화면 상태바 판독 없이 기계적으로 대조할 수 있어야 하며, 권위 정보가 없을 때는 기존 계약대로 `unknown`을 정직하게 반환한다. 이것이 없으면 아래 스킬 한계는 어느 스킬 구현으로도 닫히지 않는다.
+  - 정당한 예외 경로 — 무영수증 통과가 아니라 제품이 검증·감사 가능한 override 영수증으로만 허용한다. 최소 결속 필드는 사유(reason), 대체 경로(alternativePath), 원 라우터 출력(originalRouterOutput)+selectionId, 승인 ID(superApprovalId)이며, 1회성(singleUse)·범위 제한(scope)이 감사 기록에 남아야 한다. 이는 새 구현 범위가 아니라 B안 요구사항 문구 보강이다.
 - 스킬(kyle-agent-skills) 책임(범위 축소): 안정 키 라우터 경유 증명 + 발령 뒤 append-only 감사 기록까지만. model/effort mismatch·actual_unreported는 감사에 사후 기록으로 남기되 **발령 거부 조건이 아니다**(D1 축소 명세, kyle-agent-skills routing-pin-contract.md 절 5.3.7).
-- 검증 철학: raw dispatch 거부는 task·run·pane·model 바인딩과 재사용·만료 방지를 포함하고, 제품 카드 구현 뒤 독립 적대 검수로 닫는다.
+- 검증 철학: raw dispatch 거부는 task·run·pane·model 바인딩과 재사용·만료 방지, selection/round ID 결속을 포함하고, 제품 카드 구현 뒤 독립 적대 검수로 닫는다. dispatch 응답의 actual model/effort도 영수증 선택값과 기계 대조해 검증한다.
 - 선행 근거: kyle-agent-skills R8 독립 검수 치명 1(model/effort가 필수도 아니고 실제 터미널과 묶이지도 않음)·치명 2(휘발 6키 라이브 재계산 불완전 + 발급 experiment-key가 소비 경로에서 유실), 및 D1 축소 절 5.3.7. 증거 보고서는 본체 레포 kyle-agent-skills의 `.orca/evidence/router-improvement-1/track-k-code-r8-review/`, `track-k-descope-spec/`, `track-k-descope-implementation/`.
+  - 격리 기록이 직접 증명한 것: 절대경로 `/Users/fw_m1/Dev/kyle-agent-skills/.orca/routing-events/conductor-hardening-1.quarantine.jsonl`에 `dispatch_missing_selection_or_round_id` 8건이 있고, 대표 발령은 `task_b4c634b3e37b`다. 이 기록은 selection/round ID 없이 발령을 시도한 사실까지만 증명한다.
+  - 슈퍼 대조가 확인한 것: 대표 task는 `gpt-5.6-terra` `medium`으로 수동 발령됐고, 같은 시각 selector `sel-f3aa229860022b4a` 및 `sel-fbf740fd0404ea3c`가 실행됐지만 발령에 결속되지 않았다. 라우팅 원본에는 terra medium 항목이 없고 terra high는 비활성이어서 정책과 맞지 않는다. 제품 dispatch 응답은 실제 모델을 주지 않아 사람이 화면 상태바를 읽어야만 이를 확인했다.
+  - 예외 경로 실측: 이번 문서 작업도 제품 영수증 경로가 준비되지 않아 공식 Orca dispatch가 멈췄고, 슈퍼 승인 `msg_66a273c3e40b`의 override 영수증(`/Users/fw_m1/Dev/orca-kyle/.orca/evidence/receipt-hardening-1/b-evidence-reinforcement/override-receipt.json`, selectionId `sel-150f47e8bb58bbef`) 뒤에만 외부 문서 작업자를 쓸 수 있었다. 강제만 만들고 검증 가능한 정당한 예외 경로를 주지 않으면 작업이 멈춘다는 근거다.
 - 범위 밖: 본 카드는 이 TODO 항목 정리만 담당한다. 제품 구현과 push는 이 카드 범위 밖이며, 차기 orca-kyle 판 제품 카드로 kyle가 승격 여부를 결정한다.
 
 ## gate-create의 관문-편지 원자화 (2026-08-05 실사고 gate_404bcf8d5e01, 슈퍼감독 기록)
@@ -170,3 +174,23 @@
 - [ ] 제품이 companion에게 **위임 소비 자격**을 발급한다 — dispatch capability처럼 "이 Run의 Delivery를 감독 대신 소비·ack해도 된다"는 토큰(Run 단위, 감독이 발급, 만료·회수 가능). companion은 pane env 신분 없이 토큰만으로 `orchestration check` 소비가 가능해진다.
 - [ ] 토큰 검증은 receipt-hardening-1 판이 확정한 "제품 검증 서명" 경계(앱 프로세스 보유 키, msg_502b46a75ed7)와 같은 축을 재사용한다.
 - 범위 밖: 본 항목은 기록만. 제품 구현 승격은 receipt-hardening-1 판 B안 완료 후 kyle이 결정.
+
+## orchestration send가 존재하지 않는 수신자를 조용히 받아들인다 (실패 닫힘 필요)
+
+**Why**: 2026-08-07 슈퍼감독이 감독 handle 마지막 한 글자가 잘린 값(41자 중 40자)을 `--to`에 넣어 편지를 보냈는데, CLI가 오류 없이 `Sent msg_305bbffc2041`을 반환했다. 그 편지는 존재하지 않는 주소로 들어가 누구에게도 배달되지 않았고, 판 receipt-hardening-1은 그 사실을 모른 채 계속 서 있었다. 발신자는 보냈다고 믿었고 수신자는 받은 적이 없다.
+
+**필요한 것**
+- `orchestration send`가 `--to <handle>`을 받을 때 그 handle이 실제 존재하는 terminal인지 확인하고, 없으면 실패 닫힘으로 거부한다. 지금은 fail-open이다.
+- `--to-role` 경로와 동일하게 후보 0개면 거부하는 규칙을 handle 경로에도 적용한다.
+- 회귀 시험: 존재하지 않는 handle, 한 글자 잘린 handle, 이미 종료된 terminal의 handle 세 경우 모두 거부되는지.
+
+**참고**: 실사고 기록은 super-conductor 스킬의 `references/incident-log.md` 2026-08-07 항목.
+
+## dispatch_contexts가 비정상 종료 경로에서 정산되지 않고, 닫을 명령도 없다
+
+**Why**: 2026-08-07 기준 `dispatch_contexts`에 `dispatched` 상태로 남은 행이 9건이고, 8월 2일부터 5일에 걸쳐 6개 서로 다른 판에서 나왔다. 정상 완료 경로에서는 정산된다(completed 389, failed 60). 그러나 교체·중단·사망으로 끝난 발령은 `dispatched` 행을 영구히 남긴다. `worker-abandon`과 `worker-stop`은 `worker_dispatches` 표를 보므로 이 행들에는 `dispatch_not_found`를 낸다. 결과적으로 한 카드의 현재 발령을 장부만으로 유일하게 결정할 수 없다. 실제로 R6 구현 카드에서는 진짜로 일한 발령만 completed로 닫히고, 죽은 창 2개가 유일한 "진행 중"으로 남았다.
+
+**필요한 것**
+- 발령 교체·중단·사망 경로에서도 `dispatch_contexts`를 종료 상태로 정산한다.
+- 남은 행을 닫는 공개 CLI 명령을 추가한다(현재는 DB 직접 수정 외에 경로가 없고, 그건 금지다).
+- 한 카드에 `dispatched`가 2개 이상이면 그 자체를 결속 위반으로 보는 검사.
