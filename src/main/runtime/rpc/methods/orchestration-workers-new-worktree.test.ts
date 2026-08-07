@@ -75,6 +75,14 @@ describe('orchestration new-worktree workers', () => {
 
   async function startWorker(overrides: Record<string, unknown> = {}) {
     const task = db.createTask({ spec: 'new-worktree task', runId })
+    // Reserve a product-verified receipt before worker-start (receipt gate moved before side effects).
+    const reserveMethod = ORCHESTRATION_METHODS.find(
+      (candidate) => candidate.name === 'orchestration.dispatchReserve'
+    )
+    const reserveResult = (await reserveMethod!.handler(
+      reserveMethod!.params!.parse({ task: task.id, run: runId, from: 'term_coord' }),
+      { runtime }
+    )) as { receipt: unknown }
     const method = ORCHESTRATION_METHODS.find(
       (candidate) => candidate.name === 'orchestration.workerStart'
     )
@@ -87,6 +95,7 @@ describe('orchestration new-worktree workers', () => {
       worktree: 'new-child',
       name: 'new-worker',
       agent: 'codex',
+      receipt: JSON.stringify(reserveResult.receipt),
       ...overrides
     })
     const result = await method.handler(params, { runtime })
@@ -164,6 +173,13 @@ describe('orchestration new-worktree workers', () => {
     } as never)
     const createWorktree = vi.spyOn(runtime, 'createManagedWorktree')
     const task = db.createTask({ spec: 'folder task', runId })
+    const reserveMethod = ORCHESTRATION_METHODS.find(
+      (candidate) => candidate.name === 'orchestration.dispatchReserve'
+    )
+    const reserveResult = (await reserveMethod!.handler(
+      reserveMethod!.params!.parse({ task: task.id, run: runId, from: 'term_coord' }),
+      { runtime }
+    )) as { receipt: unknown }
     const method = ORCHESTRATION_METHODS.find(
       (candidate) => candidate.name === 'orchestration.workerStart'
     )
@@ -178,7 +194,8 @@ describe('orchestration new-worktree workers', () => {
           from: 'term_coord',
           worktree: 'new-child',
           name: 'folder-worker',
-          agent: 'codex'
+          agent: 'codex',
+          receipt: JSON.stringify(reserveResult.receipt)
         }),
         { runtime }
       )
@@ -501,6 +518,14 @@ describe('orchestration new-worktree workers', () => {
         })
     )
     const dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
+    // Reserve a receipt before worker-start (receipt gate moved before side effects).
+    const reserveMethod = ORCHESTRATION_METHODS.find(
+      (candidate) => candidate.name === 'orchestration.dispatchReserve'
+    )
+    const reserveResult = (await reserveMethod!.handler(
+      reserveMethod!.params!.parse({ task: task.id, run: runId, from: 'term_coord' }),
+      { runtime }
+    )) as { receipt: unknown }
     const request: RpcRequest = {
       id: 'rpc_worker_start',
       authToken: 'caller-token',
@@ -512,7 +537,8 @@ describe('orchestration new-worktree workers', () => {
         from: 'term_coord',
         worktree: 'new-child',
         name: 'atomic-worker',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: JSON.stringify(reserveResult.receipt)
       }
     }
 

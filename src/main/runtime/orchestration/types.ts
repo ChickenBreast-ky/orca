@@ -276,6 +276,26 @@ export type DispatchContextRow = {
   last_heartbeat_at: string | null
 }
 
+export type DispatchReceiptReservationRow = {
+  dispatch_id: string
+  jti: string
+  run_id: string
+  task_id: string
+  assignee_handle: string | null
+  assignee_pane_key: string | null
+  process_incarnation: string | null
+  routing_input_json: string
+  routing_output_json: string
+  providers_pin_sha: string
+  selector_pin_sha: string
+  key_id: string
+  status: 'reserved' | 'consumed' | 'expired'
+  issued_at: string
+  expires_at: string
+  consumed_at: string | null
+  created_at: string
+}
+
 export type DecisionGateRow = {
   id: string
   run_id: string

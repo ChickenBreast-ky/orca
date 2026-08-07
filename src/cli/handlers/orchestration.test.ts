@@ -370,7 +370,8 @@ describe('orchestration dispatch coordinator handle', () => {
       new Map<string, string | boolean>([
         ['task', 'task_1'],
         ['to', 'term_worker'],
-        ['inject', true]
+        ['inject', true],
+        ['receipt', 'dummy_receipt']
       ])
     )
 
@@ -388,7 +389,8 @@ describe('orchestration dispatch coordinator handle', () => {
       inject: true,
       dryRun: undefined,
       returnPreamble: undefined,
-      devMode: false
+      devMode: false,
+      receipt: 'dummy_receipt'
     })
   })
 

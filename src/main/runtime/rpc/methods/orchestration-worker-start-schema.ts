@@ -17,7 +17,10 @@ export const WorkerStartParams = z.object({
   agent: OptionalString,
   retryOf: OptionalString,
   timeoutMs: OptionalFiniteNumber,
-  devMode: z.boolean().optional()
+  devMode: z.boolean().optional(),
+  // Why: worker-start is an internal dispatch path; it must pass the same
+  // product-verified receipt gate so it cannot bypass routing (contract 5).
+  receipt: OptionalString
 })
 
 export type WorkerStartInput = z.infer<typeof WorkerStartParams>

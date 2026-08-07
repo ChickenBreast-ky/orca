@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- Why: RPC method definitions co-locate param schemas with handlers; splitting by method would scatter the shared enums and Zod transforms without reducing complexity. */
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { defineMethod, type RpcMethod } from '../core'
 import { OptionalFiniteNumber, OptionalString, OptionalBoolean, requiredString } from '../schemas'
@@ -26,6 +27,20 @@ import { ORCHESTRATION_FEDERATION_METHODS } from './orchestration-federation-met
 import { OrchestrationError } from '../../orchestration/orchestration-error'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import type { RunRow } from '../../orchestration/types'
+import {
+  loadRoutingProvidersBundle,
+  ROUTING_PROVIDERS_PIN
+} from '../../orchestration/routing/routing-bundle'
+import { validateProvidersInvariants } from '../../orchestration/routing/routing-invariants'
+import {
+  selectPair,
+  RoutingError as RoutingSelectionError,
+  emptyQuotaResponse,
+  ROUTING_SELECTOR_PIN,
+  type RoutingDecision
+} from '../../orchestration/routing/routing-selector'
+import { getProcessDispatchReceiptAuthority } from '../../orchestration/dispatch-receipt-authority'
+import { consumeProductVerifiedReceipt } from '../../orchestration/dispatch-receipt-gate'
 import { encodeFederatedControlMessage } from '../../orchestration/federation-control-message'
 import { ORCHESTRATION_FEDERATION_CONTROL_MAIL_PROTOCOL_VERSION } from '../../../../shared/protocol-version'
 
@@ -199,7 +214,21 @@ const DispatchParams = z.object({
   dryRun: OptionalBoolean,
   returnPreamble: OptionalBoolean,
   devMode: OptionalBoolean,
-  run: OptionalString
+  run: OptionalString,
+  // Why: a product-verified receipt is required for any real dispatch; absent only for --dry-run.
+  receipt: OptionalString
+})
+
+const DispatchReserveParams = z.object({
+  task: requiredString('Missing --task'),
+  to: OptionalString,
+  from: OptionalString,
+  run: OptionalString,
+  taskSize: z.enum(['light', 'heavy']).optional(),
+  unavailableProviders: OptionalString,
+  experimentKey: OptionalString,
+  quota: OptionalString,
+  devMode: OptionalBoolean
 })
 
 const DispatchShowParams = z.object({
@@ -433,6 +462,161 @@ function rejectFederatedExplicitTarget(params: { to?: string; run?: string }): v
       'invalid_argument',
       'Federated Dispatch messages route to their Run home; omit --to and --run.'
     )
+  }
+}
+
+// ── Product-verified dispatch receipt helpers ──
+
+type ProductRoutingResult = {
+  decision: RoutingDecision
+  routingInput: string
+  routingOutput: string
+  providersPinSha: string
+  // Why (msg_9fc2a74784e8 audit): record used/bundled-pin/skew so a valid-but-newer
+  // table is observable in receipt/audit without rejecting it.
+  providersBundledPinSha: string
+  providersSkew: boolean
+  selectorPinSha: string
+}
+
+// Computes the routing selection from the vendored single source so the receipt
+// binds a product-verified pair, never a caller-provided claim (contract 1).
+function computeProductRouting(params: {
+  taskSize?: 'light' | 'heavy'
+  unavailableProviders?: string
+  experimentKey?: string
+  quota?: string
+}): ProductRoutingResult {
+  const bundle = loadRoutingProvidersBundle()
+  // Why (msg_9fc2a74784e8): the providers table does not require exact pin
+  // match, but the product verifies structural/boundary invariants and refuses
+  // issuance on a violation. A table differing from the pin is a skew/audit note.
+  const invariantViolation = validateProvidersInvariants(bundle.config)
+  if (invariantViolation) {
+    throw new OrchestrationError(invariantViolation.code, invariantViolation.reason)
+  }
+  const nowMs = Date.now()
+  const quotaJson =
+    params.quota && params.quota.trim().length > 0 ? params.quota : emptyQuotaResponse(nowMs)
+  const unavailable = new Set(
+    (params.unavailableProviders ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  )
+  const taskSize = params.taskSize ?? 'heavy'
+  let decision: ProductRoutingResult['decision']
+  try {
+    decision = selectPair({
+      config: bundle.config,
+      quotaJson,
+      taskSize,
+      unavailableProviders: unavailable,
+      nowMs,
+      experimentKey: params.experimentKey ?? null
+    })
+  } catch (err) {
+    if (err instanceof RoutingSelectionError) {
+      throw new OrchestrationError('routing_no_pair', err.message)
+    }
+    throw err
+  }
+  // Why (audit): distinguish the hash actually used from the pinned bundled hash.
+  const providersBundledPinSha = ROUTING_PROVIDERS_PIN.blobSha
+  const providersSkew = bundle.blobSha !== providersBundledPinSha
+  const routingInput = JSON.stringify({
+    taskSize,
+    unavailableProviders: [...unavailable].sort(),
+    experimentKey: params.experimentKey ?? null,
+    quotaDigest: createHash('sha256').update(quotaJson, 'utf8').digest('hex'),
+    providersSource: bundle.source,
+    providersUsedSha: bundle.blobSha,
+    providersBundledPinSha,
+    providersSkew,
+    selectorPinSha: ROUTING_SELECTOR_PIN.blobSha,
+    computedAt: nowMs
+  })
+  const routingOutput = JSON.stringify({
+    developer: { ...decision.developer },
+    reviewer: { ...decision.reviewer },
+    score: decision.score,
+    lastResort: decision.lastResort,
+    sameFamily: decision.sameFamily
+  })
+  return {
+    decision,
+    routingInput,
+    routingOutput,
+    providersPinSha: bundle.blobSha,
+    providersBundledPinSha,
+    providersSkew,
+    selectorPinSha: ROUTING_SELECTOR_PIN.blobSha
+  }
+}
+
+type ClaimedModelInfo = {
+  provider: string
+  family: string
+  model: string
+  effort: string
+}
+
+function parseClaimedRoutingOutput(routingOutput: string): {
+  developer: ClaimedModelInfo
+  reviewer: ClaimedModelInfo
+} | null {
+  try {
+    const parsed = JSON.parse(routingOutput) as {
+      developer?: Partial<ClaimedModelInfo>
+      reviewer?: Partial<ClaimedModelInfo>
+    }
+    const dev = parsed.developer
+    const rev = parsed.reviewer
+    if (!dev || !rev || typeof dev.model !== 'string' || typeof rev.model !== 'string') {
+      return null
+    }
+    return {
+      developer: {
+        provider: dev.provider ?? '',
+        family: dev.family ?? '',
+        model: dev.model,
+        effort: dev.effort ?? ''
+      },
+      reviewer: {
+        provider: rev.provider ?? '',
+        family: rev.family ?? '',
+        model: rev.model,
+        effort: rev.effort ?? ''
+      }
+    }
+  } catch {
+    return null
+  }
+}
+
+type ModelSource = 'launch_configured' | 'runtime_observed' | 'unknown'
+
+// The product reports actual model/effort with an honest source label. It does
+// not authoritatively store launch model/effort today (investigation
+// receipt-hardening-1), so the honest value is 'unknown' — never faked as match
+// (contract 6). The structure keeps launch_configured/runtime_observed distinct
+// so a future authority source slots in without changing the contract.
+function buildDispatchModelResponse(claimed: {
+  developer: ClaimedModelInfo
+  reviewer: ClaimedModelInfo
+}) {
+  const unknownSource: { model: null; effort: null; source: ModelSource } = {
+    model: null,
+    effort: null,
+    source: 'unknown'
+  }
+  return {
+    actual: { developer: unknownSource, reviewer: unknownSource },
+    claimed,
+    mismatch: {
+      developer: 'actual_unknown' as const,
+      reviewer: 'actual_unknown' as const
+    }
   }
 }
 
@@ -1220,6 +1404,95 @@ export const ORCHESTRATION_METHODS: RpcMethod[] = [
   }),
 
   defineMethod({
+    name: 'orchestration.dispatchReserve',
+    params: DispatchReserveParams,
+    handler: (params, { runtime, legacyCoordinatorRunId }) => {
+      const db = runtime.getOrchestrationDb()
+      const task = db.getTask(params.task)
+      if (!task) {
+        throw new Error(`Task not found: ${params.task}`)
+      }
+      const run = resolveRunScope(runtime, {
+        runId: params.run,
+        callerTerminalHandle: params.from,
+        requireCurrentConsumer: true,
+        legacyCoordinatorRunId
+      })
+      if (task.run_id !== run.id) {
+        throw new OrchestrationError(
+          'task_not_found',
+          `Task ${task.id} was not found in Run ${run.id}.`
+        )
+      }
+
+      // Product computes the routing selection from the vendored single source —
+      // it never signs a caller-provided pair (contract 1, gate_c38ff35fbc0a).
+      const routing = computeProductRouting(params)
+
+      // Bind the target terminal when known (dispatch path). worker-start
+      // reserves before the terminal exists and binds at consume time instead.
+      let assigneeHandle: string | null = null
+      let assigneePaneKey: string | null = null
+      let processIncarnation: string | null = null
+      if (params.to) {
+        const authority = runtime.getOrchestrationDispatchAuthority(params.to)
+        assigneeHandle = params.to
+        assigneePaneKey = authority?.paneKey ?? runtime.getTerminalPaneKey(params.to) ?? null
+        processIncarnation =
+          authority?.processIncarnation ?? runtime.getTerminalProcessIncarnation(params.to) ?? null
+      }
+
+      const dispatchId = db.generateDispatchContextId()
+      const authoritySigner = getProcessDispatchReceiptAuthority()
+      const receipt = authoritySigner.issueReceipt({
+        dispatchId,
+        runId: run.id,
+        taskId: task.id,
+        assigneeHandle,
+        assigneePaneKey,
+        processIncarnation,
+        routingInput: routing.routingInput,
+        routingOutput: routing.routingOutput,
+        providersPinSha: routing.providersPinSha,
+        selectorPinSha: routing.selectorPinSha
+      })
+
+      db.createDispatchReceiptReservation({
+        dispatchId,
+        jti: receipt.jti,
+        runId: run.id,
+        taskId: task.id,
+        assigneeHandle,
+        assigneePaneKey,
+        processIncarnation,
+        routingInputJson: routing.routingInput,
+        routingOutputJson: routing.routingOutput,
+        providersPinSha: routing.providersPinSha,
+        selectorPinSha: routing.selectorPinSha,
+        keyId: receipt.keyId,
+        issuedAt: receipt.issuedAt,
+        expiresAt: receipt.expiresAt
+      })
+
+      return {
+        dispatchId,
+        receipt,
+        routing: {
+          developer: routing.decision.developer,
+          reviewer: routing.decision.reviewer,
+          score: routing.decision.score,
+          lastResort: routing.decision.lastResort,
+          sameFamily: routing.decision.sameFamily
+        },
+        providersPinSha: routing.providersPinSha,
+        providersBundledPinSha: routing.providersBundledPinSha,
+        providersSkew: routing.providersSkew,
+        selectorPinSha: routing.selectorPinSha
+      }
+    }
+  }),
+
+  defineMethod({
     name: 'orchestration.dispatch',
     params: DispatchParams,
     handler: async (params, { runtime, legacyCoordinatorRunId, revalidateLegacyCoordinator }) => {
@@ -1292,12 +1565,29 @@ export const ORCHESTRATION_METHODS: RpcMethod[] = [
         )
       }
 
+      // ── Product-verified dispatch receipt gate (contract 4) ──
+      // Why: a raw dispatch with no valid receipt must be refused before any PTY
+      // injection. Forged/omitted/extra fields, binding mismatch, expiry, replay,
+      // and post-restart key rotation are all rejected here; the reservation's
+      // atomic consume is the once-only guarantee.
+      const receiptReservation = consumeProductVerifiedReceipt({
+        db,
+        receipt: params.receipt,
+        runId: run.id,
+        taskId: task.id,
+        assigneeHandle: to,
+        assigneePaneKey: assigneePaneKey ?? null,
+        processIncarnation: processIncarnation ?? null
+      })
+
       revalidateLegacyCoordinator?.()
       const ctx = db.createDispatchContext(
         params.task,
         to,
         assigneePaneKey,
-        dispatchAuthority?.launchTokenHash ?? undefined
+        dispatchAuthority?.launchTokenHash ?? undefined,
+        // Why: reuse the reserved ctx_ so dispatch.id == reserved dispatchId (acceptance A).
+        receiptReservation.dispatchId
       )
       const dispatchCapability = params.inject
         ? db.mintDispatchCapability({
@@ -1331,10 +1621,19 @@ export const ORCHESTRATION_METHODS: RpcMethod[] = [
       }
 
       // Why: returnPreamble is opt-in because the preamble is several hundred bytes most callers don't need in the response.
+      const claimedPair = parseClaimedRoutingOutput(receiptReservation.routingOutput)
+      const modelResponse =
+        claimedPair !== null
+          ? buildDispatchModelResponse(claimedPair)
+          : {
+              actual: { developer: null, reviewer: null },
+              claimed: null,
+              mismatch: { developer: 'actual_unknown', reviewer: 'actual_unknown' }
+            }
       if (params.returnPreamble) {
-        return { dispatch: ctx, injected, preamble }
+        return { dispatch: ctx, injected, preamble, ...modelResponse }
       }
-      return { dispatch: ctx, injected }
+      return { dispatch: ctx, injected, ...modelResponse }
     }
   }),
 

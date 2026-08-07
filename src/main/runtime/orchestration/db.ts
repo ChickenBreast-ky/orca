@@ -13,6 +13,7 @@ import type {
   MessageRow,
   TaskRow,
   DispatchContextRow,
+  DispatchReceiptReservationRow,
   DecisionGateRow,
   CoordinatorRun,
   WorkerReportOutcome,
@@ -249,8 +250,8 @@ type RunListCursor = {
   id: string
 }
 
-// Schema versions: v2 'heartbeat'+last_heartbeat_at, v3 delivered_at, v4 task-creator terminal, v5 task_title/display_name, v6 pane identity, v7 lightweight Runs, v8 crash-safe Run deliveries, v9 durable question threads, v10 Dispatch capabilities, v11 durable mutation receipts, v12 composed worker state, v18 post-v6 version-skew repair, v19 adopted legacy Runs and compatibility receipts, v20 legacy question backfill, v21 legacy scheduler-loss provenance, v22 dispatch assignee lookup.
-const SCHEMA_VERSION = 22
+// Schema versions: v2 'heartbeat'+last_heartbeat_at, v3 delivered_at, v4 task-creator terminal, v5 task_title/display_name, v6 pane identity, v7 lightweight Runs, v8 crash-safe Run deliveries, v9 durable question threads, v10 Dispatch capabilities, v11 durable mutation receipts, v12 composed worker state, v18 post-v6 version-skew repair, v19 adopted legacy Runs and compatibility receipts, v20 legacy question backfill, v21 legacy scheduler-loss provenance, v22 dispatch assignee lookup, v23 product-verified dispatch receipt reservations.
+const SCHEMA_VERSION = 23
 
 function hardenOrchestrationDatabaseFiles(dbPath: string | ':memory:'): void {
   if (dbPath === ':memory:' || process.platform === 'win32') {
@@ -520,8 +521,32 @@ export class OrchestrationDb {
         poll_interval_ms    INTEGER NOT NULL DEFAULT 2000,
         created_at          TEXT NOT NULL DEFAULT (datetime('now')),
         completed_at        TEXT,
-        scheduler_lost_at   TEXT
+       scheduler_lost_at   TEXT
       );
+    `)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_receipt_reservations (
+        dispatch_id         TEXT PRIMARY KEY,
+        jti                 TEXT NOT NULL UNIQUE,
+        run_id              TEXT NOT NULL,
+        task_id             TEXT NOT NULL,
+        assignee_handle     TEXT,
+        assignee_pane_key   TEXT,
+        process_incarnation TEXT,
+        routing_input_json  TEXT NOT NULL,
+        routing_output_json TEXT NOT NULL,
+        providers_pin_sha   TEXT NOT NULL,
+        selector_pin_sha    TEXT NOT NULL,
+        key_id              TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'reserved'
+          CHECK(status IN ('reserved', 'consumed', 'expired')),
+        issued_at           TEXT NOT NULL,
+        expires_at          TEXT NOT NULL,
+        consumed_at         TEXT,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_receipt_reservation_task ON dispatch_receipt_reservations(task_id);
+      CREATE INDEX IF NOT EXISTS idx_receipt_reservation_status ON dispatch_receipt_reservations(status);
     `)
     this.createUndeliveredInboxIndexIfPossible()
   }
@@ -874,8 +899,34 @@ export class OrchestrationDb {
       }
       if (current < 22) {
         this.db.exec(`
-          CREATE INDEX IF NOT EXISTS idx_dispatch_assignee_handle
-            ON dispatch_contexts(assignee_handle);
+         CREATE INDEX IF NOT EXISTS idx_dispatch_assignee_handle
+           ON dispatch_contexts(assignee_handle);
+       `)
+      }
+      if (current < 23) {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS dispatch_receipt_reservations (
+            dispatch_id         TEXT PRIMARY KEY,
+            jti                 TEXT NOT NULL UNIQUE,
+            run_id              TEXT NOT NULL,
+            task_id             TEXT NOT NULL,
+            assignee_handle     TEXT,
+            assignee_pane_key   TEXT,
+            process_incarnation TEXT,
+            routing_input_json  TEXT NOT NULL,
+            routing_output_json TEXT NOT NULL,
+            providers_pin_sha   TEXT NOT NULL,
+            selector_pin_sha    TEXT NOT NULL,
+            key_id              TEXT NOT NULL,
+            status              TEXT NOT NULL DEFAULT 'reserved'
+              CHECK(status IN ('reserved', 'consumed', 'expired')),
+            issued_at           TEXT NOT NULL,
+            expires_at          TEXT NOT NULL,
+            consumed_at         TEXT,
+            created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_receipt_reservation_task ON dispatch_receipt_reservations(task_id);
+          CREATE INDEX IF NOT EXISTS idx_receipt_reservation_status ON dispatch_receipt_reservations(status);
         `)
       }
       this.createUndeliveredInboxIndexIfPossible()
@@ -3827,6 +3878,8 @@ export class OrchestrationDb {
     startOptions: unknown
     launchTokenHash?: string
     retryOf?: string
+    // Why: a product-verified receipt reserves a ctx_ before worker-start; reusing it keeps dispatchId == reserved ctx_.
+    reservedDispatchId?: string
     runtimeEpoch?: string
     federation?: {
       environmentId: string
@@ -3895,7 +3948,7 @@ export class OrchestrationDb {
         )
       }
 
-      const id = generateId('ctx')
+      const id = params.reservedDispatchId ?? generateId('ctx')
       if (params.mutationReceipt) {
         this.db
           .prepare(
@@ -5404,7 +5457,9 @@ export class OrchestrationDb {
     assigneeHandle: string,
     // Why: pane key is the remint-stable identity behind the handle — lets worker_done ownership survive handle reissue.
     assigneePaneKey?: string,
-    launchTokenHash?: string
+    launchTokenHash?: string,
+    // Why: a product-verified receipt reserves a ctx_ id before dispatch; reusing it keeps dispatch.id == reserved ctx_ (acceptance A).
+    reservedId?: string
   ): DispatchContextRow {
     const task = this.getTask(taskId)
     if (!task) {
@@ -5429,7 +5484,7 @@ export class OrchestrationDb {
       .get(taskId) as { max_failures: number | null } | undefined
     const priorFailures = prior?.max_failures ?? 0
 
-    const id = generateId('ctx')
+    const id = reservedId ?? generateId('ctx')
     this.db
       .prepare(
         `INSERT INTO dispatch_contexts (
@@ -5460,6 +5515,12 @@ export class OrchestrationDb {
     return this.db
       .prepare('SELECT * FROM dispatch_contexts WHERE task_id = ? ORDER BY rowid DESC LIMIT 1')
       .get(taskId) as DispatchContextRow | undefined
+  }
+
+  // Generates a ctx_ id for receipt reservation; reused as the dispatch_context
+  // id at consume time so dispatch.id == reserved ctx_ (acceptance A).
+  generateDispatchContextId(): string {
+    return generateId('ctx')
   }
 
   getDispatchContextById(dispatchId: string): DispatchContextRow | undefined {
@@ -5493,6 +5554,79 @@ export class OrchestrationDb {
       )
       .run(launchTokenHash, dispatchId)
     return this.getDispatchContextById(dispatchId) as DispatchContextRow
+  }
+
+  // ── Product-verified dispatch receipt reservations (schema v23) ──
+  // The reservation holds a product-computed routing selection bound to a
+  // dispatchId. Atomic reserved→consumed is the once-only / replay guarantee.
+
+  createDispatchReceiptReservation(params: {
+    dispatchId: string
+    jti: string
+    runId: string
+    taskId: string
+    assigneeHandle: string | null
+    assigneePaneKey: string | null
+    processIncarnation: string | null
+    routingInputJson: string
+    routingOutputJson: string
+    providersPinSha: string
+    selectorPinSha: string
+    keyId: string
+    issuedAt: number
+    expiresAt: number
+  }): DispatchReceiptReservationRow {
+    this.db
+      .prepare(
+        `INSERT INTO dispatch_receipt_reservations (
+           dispatch_id, jti, run_id, task_id, assignee_handle, assignee_pane_key,
+           process_incarnation, routing_input_json, routing_output_json,
+           providers_pin_sha, selector_pin_sha, key_id, status, issued_at, expires_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved', ?, ?)`
+      )
+      .run(
+        params.dispatchId,
+        params.jti,
+        params.runId,
+        params.taskId,
+        params.assigneeHandle,
+        params.assigneePaneKey,
+        params.processIncarnation,
+        params.routingInputJson,
+        params.routingOutputJson,
+        params.providersPinSha,
+        params.selectorPinSha,
+        params.keyId,
+        new Date(params.issuedAt).toISOString(),
+        new Date(params.expiresAt).toISOString()
+      )
+    return this.getDispatchReceiptReservation(params.dispatchId) as DispatchReceiptReservationRow
+  }
+
+  getDispatchReceiptReservation(dispatchId: string): DispatchReceiptReservationRow | undefined {
+    return this.db
+      .prepare('SELECT * FROM dispatch_receipt_reservations WHERE dispatch_id = ?')
+      .get(dispatchId) as DispatchReceiptReservationRow | undefined
+  }
+
+  // Atomically transitions a reservation reserved→consumed. Returns the row on
+  // the single successful consume, or null when the reservation is absent or
+  // already consumed (replay / lost a concurrent race).
+  consumeDispatchReceiptReservation(
+    dispatchId: string,
+    jti: string
+  ): DispatchReceiptReservationRow | null {
+    const result = this.db
+      .prepare(
+        `UPDATE dispatch_receipt_reservations
+         SET status = 'consumed', consumed_at = datetime('now')
+         WHERE dispatch_id = ? AND jti = ? AND status = 'reserved'`
+      )
+      .run(dispatchId, jti)
+    if (result.changes !== 1) {
+      return null
+    }
+    return this.getDispatchReceiptReservation(dispatchId) ?? null
   }
 
   mintDispatchCapability(params: {

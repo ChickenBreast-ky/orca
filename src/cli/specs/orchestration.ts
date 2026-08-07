@@ -161,7 +161,7 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
     path: ['orchestration', 'dispatch'],
     summary: 'Dispatch a task to a terminal',
     usage:
-      'orca orchestration dispatch --task <task_id> --to <handle> [--from <handle>] [--run <run_id>] [--inject] [--dry-run] [--return-preamble] [--json]',
+      'orca orchestration dispatch --task <task_id> --to <handle> --receipt <json> [--from <handle>] [--run <run_id>] [--inject] [--dry-run] [--return-preamble] [--json]',
     allowedFlags: [
       ...GLOBAL_FLAGS,
       'task',
@@ -171,6 +171,25 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
       'inject',
       'dry-run',
       'return-preamble',
+      'retry-request',
+      'receipt'
+    ]
+  },
+  {
+    path: ['orchestration', 'dispatch', 'reserve'],
+    summary: 'Reserve a product-verified dispatch receipt (computes routing selection)',
+    usage:
+      'orca orchestration dispatch reserve --task <task_id> [--to <handle>] [--from <handle>] [--run <run_id>] [--task-size heavy|light] [--unavailable-provider <id>] [--experiment-key <key>] [--quota <json>] [--json]',
+    allowedFlags: [
+      ...GLOBAL_FLAGS,
+      'task',
+      'to',
+      'from',
+      'run',
+      'task-size',
+      'unavailable-provider',
+      'experiment-key',
+      'quota',
       'retry-request'
     ]
   },

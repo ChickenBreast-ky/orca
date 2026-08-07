@@ -43,6 +43,24 @@ describe('mapRuntimeError', () => {
   )
 
   it.each([
+    'receipt_missing',
+    'dispatch_not_reserved',
+    'receipt_signature_invalid',
+    'receipt_key_rotated',
+    'receipt_expired',
+    'receipt_binding_mismatch',
+    'routing_no_pair',
+    'providers_invariant_violation'
+  ])('preserves the product-verified dispatch receipt gate code %s', (code) => {
+    const error = Object.assign(new Error(`Receipt gate rejected: ${code}`), { code })
+
+    expect(mapRuntimeError('req_1', { runtimeId: 'runtime-1' }, error)).toMatchObject({
+      ok: false,
+      error: { code, message: `Receipt gate rejected: ${code}` }
+    })
+  })
+
+  it.each([
     ['window_not_focused', 'keyboard input requires focus', 'restore-window'],
     ['permission_denied', 'missing DBUS_SESSION_BUS_ADDRESS', 'permissions'],
     ['element_not_found', 'fresh element index required', 'get-app-state'],
