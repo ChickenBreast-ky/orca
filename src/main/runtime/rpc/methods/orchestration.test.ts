@@ -82,7 +82,7 @@ describe('orchestration RPC methods', () => {
         scopedParams.run ??= activeRunId
       } else if (name === 'orchestration.dispatch') {
         scopedParams.run ??= activeRunId
-        scopedParams.from ??= 'term_coord'
+       scopedParams.from ??= 'term_coord'
       } else if (
         name === 'orchestration.gateCreate' ||
         name === 'orchestration.gateResolve' ||
@@ -90,7 +90,10 @@ describe('orchestration RPC methods', () => {
       ) {
         // Why: gates resolve their Run from the sender's pane binding, so naming the run would skip that check.
         scopedParams.from ??= 'term_coord'
-      }
+      } else if (name === 'orchestration.dispatchReserve') {
+        scopedParams.run ??= activeRunId
+       scopedParams.from ??= 'term_coord'
+     }
     }
     const parsed = method.params ? method.params.parse(scopedParams) : undefined
     return method.handler(parsed, ctx)
@@ -107,13 +110,14 @@ describe('orchestration RPC methods', () => {
   }
 
   it('registers all expected methods', () => {
-    const registry = buildRegistry(ORCHESTRATION_METHODS)
-    expect(registry.size).toBe(38)
+   const registry = buildRegistry(ORCHESTRATION_METHODS)
+    expect(registry.size).toBe(39)
     expect(registry.has('orchestration.workerRelease')).toBe(true)
     expect(registry.has('orchestration.workerRetain')).toBe(true)
     expect(registry.has('orchestration.workerList')).toBe(true)
     expect(registry.has('orchestration.workerTerminalUserInput')).toBe(true)
-    expect(registry.has('orchestration.runCreate')).toBe(true)
+    expect(registry.has('orchestration.dispatchReserve')).toBe(true)
+   expect(registry.has('orchestration.runCreate')).toBe(true)
     expect(registry.has('orchestration.runUse')).toBe(true)
     expect(registry.has('orchestration.runCurrent')).toBe(true)
     expect(registry.has('orchestration.runList')).toBe(true)
@@ -126,6 +130,7 @@ describe('orchestration RPC methods', () => {
     expect(registry.has('orchestration.taskList')).toBe(true)
     expect(registry.has('orchestration.taskUpdate')).toBe(true)
     expect(registry.has('orchestration.dispatch')).toBe(true)
+    expect(registry.has('orchestration.dispatchReserve')).toBe(true)
     expect(registry.has('orchestration.dispatchShow')).toBe(true)
     expect(registry.has('orchestration.workerStart')).toBe(true)
     expect(registry.has('orchestration.workerShow')).toBe(true)
@@ -1900,13 +1905,22 @@ describe('orchestration RPC methods', () => {
       )
     }
 
+    async function reserveReceipt(taskId: string, to?: string): Promise<string> {
+      const reserved = (await call('orchestration.dispatchReserve', {
+        task: taskId,
+        ...(to ? { to } : {})
+      })) as { receipt: unknown }
+      return JSON.stringify(reserved.receipt)
+    }
+
     it('dispatches a task to a terminal', async () => {
       setup()
       const task = db.createTask({ spec: 'work' })
 
       const result = (await call('orchestration.dispatch', {
         task: task.id,
-        to: 'term_a'
+        to: 'term_a',
+        receipt: await reserveReceipt(task.id, 'term_a')
       })) as { dispatch: { task_id: string; status: string } }
 
       expect(result.dispatch.task_id).toBe(task.id)
@@ -1922,7 +1936,8 @@ describe('orchestration RPC methods', () => {
 
       const result = (await call('orchestration.dispatch', {
         task: task.id,
-        to: 'term_a'
+        to: 'term_a',
+        receipt: await reserveReceipt(task.id, 'term_a')
       })) as { dispatch: { id: string } }
 
       expect(runtime.getTerminalPaneKey).toHaveBeenCalledWith('term_a')
@@ -1945,7 +1960,8 @@ describe('orchestration RPC methods', () => {
 
       const result = (await call('orchestration.dispatch', {
         task: task.id,
-        to: 'term_a'
+        to: 'term_a',
+        receipt: await reserveReceipt(task.id, 'term_a')
       })) as { dispatch: { id: string } }
 
       expect(db.getDispatchContextById(result.dispatch.id)?.launch_token_hash).toBe(
@@ -1979,7 +1995,8 @@ describe('orchestration RPC methods', () => {
         call('orchestration.dispatch', {
           task: task.id,
           to: 'term_a',
-          inject: true
+          inject: true,
+          receipt: await reserveReceipt(task.id, 'term_a')
         })
       ).rejects.toThrow('terminal_not_writable')
 
@@ -2002,7 +2019,8 @@ describe('orchestration RPC methods', () => {
         task: task.id,
         to: 'term_a',
         inject: true,
-        devMode: true
+        devMode: true,
+        receipt: await reserveReceipt(task.id, 'term_a')
       })
 
       expect(send).toHaveBeenCalledWith(
@@ -2019,7 +2037,8 @@ describe('orchestration RPC methods', () => {
       const result = (await call('orchestration.dispatch', {
         task: task.id,
         to: 'term_wsl',
-        returnPreamble: true
+        returnPreamble: true,
+        receipt: await reserveReceipt(task.id, 'term_wsl')
       })) as { preamble: string }
 
       expect(runtime.getTerminalOrchestrationCliCommand).toHaveBeenCalledWith('term_wsl')
@@ -2043,7 +2062,8 @@ describe('orchestration RPC methods', () => {
         task: task.id,
         to: 'term_a',
         inject: true,
-        from: 'term_coord'
+        from: 'term_coord',
+        receipt: await reserveReceipt(task.id, 'term_a')
       })
 
       expect(agentPrompt).toHaveBeenCalledWith(
@@ -2073,9 +2093,13 @@ describe('orchestration RPC methods', () => {
       const t2 = db.createTask({ spec: 'second' })
       db.createDispatchContext(t1.id, 'term_a')
 
-      await expect(call('orchestration.dispatch', { task: t2.id, to: 'term_a' })).rejects.toThrow(
-        /already has an active dispatch/
-      )
+      await expect(
+        call('orchestration.dispatch', {
+          task: t2.id,
+          to: 'term_a',
+          receipt: await reserveReceipt(t2.id, 'term_a')
+        })
+      ).rejects.toThrow(/already has an active dispatch/)
     })
 
     it('dry-run returns the preamble without mutating state', async () => {
@@ -2114,7 +2138,8 @@ describe('orchestration RPC methods', () => {
         task: task.id,
         to: 'term_a',
         returnPreamble: true,
-        from: 'term_coord'
+        from: 'term_coord',
+        receipt: await reserveReceipt(task.id, 'term_a')
       })) as { dispatch: { id: string }; preamble: string }
 
       expect(result.dispatch.id).toMatch(/^ctx_/)
@@ -2124,6 +2149,13 @@ describe('orchestration RPC methods', () => {
   })
 
   describe('composed workers', () => {
+    async function reserveWorkerReceipt(taskId: string): Promise<string> {
+      const reserved = (await call('orchestration.dispatchReserve', { task: taskId })) as {
+        receipt: unknown
+      }
+      return JSON.stringify(reserved.receipt)
+    }
+
     function mockCurrentWorkerStart(options?: { ready?: boolean }): void {
       vi.mocked(runtime.getTerminalPaneKey).mockImplementation((handle) =>
         handle === 'term_coord'
@@ -2170,7 +2202,8 @@ describe('orchestration RPC methods', () => {
       const result = (await call('orchestration.workerStart', {
         task: task.id,
         from: 'term_coord',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as {
         dispatchId: string
         state: string
@@ -2245,7 +2278,8 @@ describe('orchestration RPC methods', () => {
       const result = (await call('orchestration.workerStart', {
         task: task.id,
         from: 'term_coord',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as { dispatchId: string }
 
       expect(db.getDispatchContextById(result.dispatchId)?.launch_token_hash).toBe(
@@ -2268,7 +2302,8 @@ describe('orchestration RPC methods', () => {
       const result = (await call('orchestration.workerStart', {
         task: task.id,
         from: 'term_coord',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as {
         state: string
         warning?: string
@@ -2306,7 +2341,8 @@ describe('orchestration RPC methods', () => {
         task: task.id,
         from: 'term_coord',
         worktree: 'id:repo::other',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as { state: string; setup: { state: string }; effects: unknown[] }
 
       expect(result).toMatchObject({ state: 'ready' })
@@ -2335,7 +2371,8 @@ describe('orchestration RPC methods', () => {
       const result = (await call('orchestration.workerStart', {
         task: task.id,
         from: 'term_coord',
-        terminal: 'term_worker'
+        terminal: 'term_worker',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as { state: string; effects: unknown[] }
 
       expect(result).toMatchObject({ state: 'ready' })
@@ -2361,7 +2398,8 @@ describe('orchestration RPC methods', () => {
       const result = (await call('orchestration.workerStart', {
         task: task.id,
         from: 'term_coord',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as { state: string; failedStage: string; residualResources: { id: string }[] }
 
       expect(result).toMatchObject({ state: 'failed', failedStage: 'agent_readiness' })
@@ -2379,7 +2417,8 @@ describe('orchestration RPC methods', () => {
       const result = (await call('orchestration.workerStart', {
         task: task.id,
         from: 'term_coord',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as { state: string; failedStage: string; residualResources: unknown[] }
 
       expect(result).toMatchObject({
@@ -2401,7 +2440,8 @@ describe('orchestration RPC methods', () => {
       const result = (await call('orchestration.workerStart', {
         task: task.id,
         from: 'term_coord',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as {
         state: string
         failedStage: string
@@ -2432,7 +2472,8 @@ describe('orchestration RPC methods', () => {
         const result = (await call('orchestration.workerStart', {
           task: task.id,
           from: 'term_coord',
-          agent: 'codex'
+          agent: 'codex',
+          receipt: await reserveWorkerReceipt(task.id)
         })) as { state: string; failedStage: string; lastError: string }
 
         expect(result).toMatchObject({
@@ -2482,7 +2523,8 @@ describe('orchestration RPC methods', () => {
         from: 'term_coord',
         worktree: 'new-child',
         name: 'child-worker',
-        agent: 'codex'
+        agent: 'codex',
+        receipt: await reserveWorkerReceipt(task.id)
       })) as {
         state: string
         setup: { requested: string; startupPolicy: string; state: string }

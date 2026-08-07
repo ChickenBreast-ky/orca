@@ -234,8 +234,7 @@ describe('OrchestrationDb dispatch assignee index migration', () => {
 
     db = new OrchestrationDb(dbPath)
     const sqlite = sqliteFor(db)
-    expect(sqlite.pragma('user_version', { simple: true })).toBe(25)
-    expect(db.getDispatchContextById(dispatch.id)).toMatchObject({ assignee_handle: 'term_worker' })
+    expect(sqlite.pragma('user_version', { simple: true })).toBe(26)    expect(db.getDispatchContextById(dispatch.id)).toMatchObject({ assignee_handle: 'term_worker' })
     expect(
       sqlite
         .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
@@ -254,7 +253,93 @@ describe('OrchestrationDb dispatch assignee index migration', () => {
 
     db.close()
     db = new OrchestrationDb(dbPath)
-    expect(sqliteFor(db).pragma('user_version', { simple: true })).toBe(25)
-    expect(db.getDispatchContextById(dispatch.id)).toBeDefined()
+    expect(sqliteFor(db).pragma('user_version', { simple: true })).toBe(26)    expect(db.getDispatchContextById(dispatch.id)).toBeDefined()
+  })
+
+  it('migrates a populated v22 database to v26 creating the receipt reservation table', () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'orca-v22-to-v26-'))
+    const dbPath = join(tempDir, 'orchestration.db')
+    db = new OrchestrationDb(dbPath)
+    const run = db.createRun({
+      objective: 'v22 baseline',
+      coordinatorHandle: 'term_coord',
+      coordinatorPaneKey: 'tab_coord:00000000-0000-4000-8000-000000000000'
+    })
+    const task = db.createTask({ spec: 'pre-v26 work', runId: run.id })
+    const dispatch = db.createDispatchContext(task.id, 'term_worker')
+    db.close()
+    db = undefined
+
+    // Simulate a real v22 binary: the v26 table and indexes do not exist yet.
+    // Drop them and set user_version=22 so the migration runs from scratch.
+    const oldDb = new Database(dbPath)
+    oldDb.exec('DROP TABLE IF EXISTS dispatch_receipt_reservations')
+    oldDb.exec('DROP INDEX IF EXISTS idx_receipt_reservation_task')
+    oldDb.exec('DROP INDEX IF EXISTS idx_receipt_reservation_status')
+    oldDb.pragma('user_version = 22')
+    oldDb.close()
+
+    // Verify the fixture is genuinely v22: no v26 objects present.
+    const fixtureDb = new Database(dbPath)
+    expect(
+      fixtureDb
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'dispatch_receipt_reservations'"
+        )
+        .get()
+    ).toBeUndefined()
+    expect(
+      fixtureDb
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_receipt_reservation_task'"
+        )
+        .get()
+    ).toBeUndefined()
+    expect(
+      fixtureDb
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_receipt_reservation_status'"
+        )
+        .get()
+    ).toBeUndefined()
+    fixtureDb.close()
+
+    // First open: v22→v26 migration runs.
+    db = new OrchestrationDb(dbPath)
+    const sqlite = sqliteFor(db)
+    expect(sqlite.pragma('user_version', { simple: true })).toBe(26)
+    // Existing data preserved.
+    expect(db!.getDispatchContextById(dispatch.id)).toMatchObject({
+      assignee_handle: 'term_worker',
+      task_id: task.id
+    })
+    // v26 reservation table + indexes created from scratch.
+    expect(
+      sqlite
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'dispatch_receipt_reservations'"
+        )
+        .get()
+    ).toBeDefined()
+    expect(
+      sqlite
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_receipt_reservation_task'"
+        )
+        .get()
+    ).toBeDefined()
+    expect(
+      sqlite
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_receipt_reservation_status'"
+        )
+        .get()
+    ).toBeDefined()
+
+    // Second open: idempotent — still v26, data intact.
+    db.close()
+    db = new OrchestrationDb(dbPath)
+    expect(sqliteFor(db!).pragma('user_version', { simple: true })).toBe(26)
+    expect(db!.getDispatchContextById(dispatch.id)).toBeDefined()
   })
 })

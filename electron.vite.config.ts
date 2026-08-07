@@ -1,6 +1,8 @@
 import { isBuiltin } from 'node:module'
 import { resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { defineConfig, type UserConfig } from 'electron-vite'
+import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { createBootstrapFatalExitBanner } from './build-plugins/bootstrap-fatal-exit-banner'
@@ -171,6 +173,31 @@ function createStartupDiagnosticsBanner(chunkName: string): string {
 `
 }
 
+function createRoutingProvidersBundlePlugin(): Plugin {
+  return {
+    name: 'orca-routing-providers-bundle',
+    buildStart() {
+      // Why: routing-bundle.ts reads the vendored providers snapshot via
+      // readFileSync(join(__dirname, 'routing-providers-bundle.json')). After
+      // electron-vite bundles main to out/main/, __dirname resolves there, so
+      // the JSON must be emitted alongside index.js without a manual copy step.
+      // The path is resolved from this config file's location, not cwd.
+      const source = readFileSync(
+        resolve(
+          import.meta.dirname,
+          'src/main/runtime/orchestration/routing/routing-providers-bundle.json'
+        ),
+        'utf8'
+      )
+      this.emitFile({
+        type: 'asset',
+        fileName: 'routing-providers-bundle.json',
+        source
+      })
+    }
+  }
+}
+
 function createMainBootstrapPlugin() {
   return {
     name: 'orca-main-bootstrap',
@@ -245,7 +272,13 @@ export const electronViteConfig: UserConfig = {
           entryFileNames: '[name].js',
           chunkFileNames: 'chunks/[name]-[hash].js'
         },
-        plugins: [createMainBootstrapPlugin(), createPlainNodeEntryGuardPlugin()]
+        // Why: the routing-providers-bundle plugin emits the vendored providers
+        // JSON adjacent to index.js so routing-bundle.ts resolves it at runtime.
+        plugins: [
+          createMainBootstrapPlugin(),
+          createPlainNodeEntryGuardPlugin(),
+          createRoutingProvidersBundlePlugin()
+        ]
       }
     },
     // Why: compile-time substitution for the telemetry gate. See the block

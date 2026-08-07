@@ -18,11 +18,14 @@ export const WorkerStartParams = z.object({
   agent: OptionalString,
   retryOf: OptionalString,
   timeoutMs: OptionalFiniteNumber,
-  devMode: z.boolean().optional(),
+ devMode: z.boolean().optional(),
   // Why: card 2 — when the coordinator supplies role input, the started
   // worker leaves an official role_roster record; runId defaults to the
   // worker's Run.
-  roleRoster: RoleRosterCreateParamsSchema.optional()
+  roleRoster: RoleRosterCreateParamsSchema.optional(),
+  // Why: worker-start is an internal dispatch path; it must pass the same
+  // product-verified receipt gate so it cannot bypass routing (contract 5).
+  receipt: OptionalString
 })
 
 export type WorkerStartInput = z.infer<typeof WorkerStartParams>

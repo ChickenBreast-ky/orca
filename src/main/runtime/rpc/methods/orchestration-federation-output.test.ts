@@ -96,6 +96,14 @@ describe('orchestration federated worker output', () => {
   }
 
   function startRequest(taskId: string): RpcRequest {
+    const rm = ORCHESTRATION_METHODS.find((c) => c.name === 'orchestration.dispatchReserve')!
+    const receipt = JSON.stringify(
+      (
+        rm.handler(rm.params!.parse({ task: taskId, from: 'term_coord' }), {
+          runtime: homeRuntime
+        }) as { receipt: unknown }
+      ).receipt
+    )
     return {
       id: 'rpc_worker_start',
       authToken: 'coordinator-token',
@@ -109,7 +117,8 @@ describe('orchestration federated worker output', () => {
         worktree: 'new-top-level',
         repo: 'id:windows-repo',
         name: 'windows-output',
-        agent: 'codex'
+        agent: 'codex',
+        receipt
       }
     }
   }
