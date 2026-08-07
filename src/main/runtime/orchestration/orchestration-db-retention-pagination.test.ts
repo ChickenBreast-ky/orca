@@ -234,7 +234,8 @@ describe('OrchestrationDb dispatch assignee index migration', () => {
 
     db = new OrchestrationDb(dbPath)
     const sqlite = sqliteFor(db)
-    expect(sqlite.pragma('user_version', { simple: true })).toBe(26)    expect(db.getDispatchContextById(dispatch.id)).toMatchObject({ assignee_handle: 'term_worker' })
+    expect(sqlite.pragma('user_version', { simple: true })).toBe(26)
+    expect(db.getDispatchContextById(dispatch.id)).toMatchObject({ assignee_handle: 'term_worker' })
     expect(
       sqlite
         .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
@@ -253,7 +254,8 @@ describe('OrchestrationDb dispatch assignee index migration', () => {
 
     db.close()
     db = new OrchestrationDb(dbPath)
-    expect(sqliteFor(db).pragma('user_version', { simple: true })).toBe(26)    expect(db.getDispatchContextById(dispatch.id)).toBeDefined()
+    expect(sqliteFor(db).pragma('user_version', { simple: true })).toBe(26)
+    expect(db.getDispatchContextById(dispatch.id)).toBeDefined()
   })
 
   it('migrates a populated v22 database to v26 creating the receipt reservation table', () => {

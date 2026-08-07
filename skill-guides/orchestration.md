@@ -195,8 +195,8 @@ Create the Run and every independent Task first, then start all independent work
 orca orchestration run-create --objective "<objective>" --json
 orca orchestration task-create --spec "<worker A task>" --json
 orca orchestration task-create --spec "<worker B task>" --json
-RECEIPT_A=$(orca orchestration dispatch reserve --task <task_a> --json | jq -c '.receipt')
-RECEIPT_B=$(orca orchestration dispatch reserve --task <task_b> --json | jq -c '.receipt')
+RECEIPT_A=$(orca orchestration dispatch reserve --task <task_a> --json | jq -c '.result.receipt')
+RECEIPT_B=$(orca orchestration dispatch reserve --task <task_b> --json | jq -c '.result.receipt')
 orca orchestration worker-start --task <task_a> --worktree current --agent codex --receipt "$RECEIPT_A" --json
 orca orchestration worker-start --task <task_b> --worktree current --agent claude --receipt "$RECEIPT_B" --json
 ```
@@ -208,7 +208,7 @@ For a new worktree, setup runs by default and agent-first creation reuses the re
 Reserve a product-verified receipt first, then pass it with `--receipt`:
 
 ```bash
-RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --json | jq -c '.receipt')
+RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --json | jq -c '.result.receipt')
 orca orchestration worker-start --task <task_id> --worktree new-child --name <name> --agent codex --receipt "$RECEIPT" --setup run --json
 # Independent/top-level:
 orca orchestration worker-start --task <task_id> --worktree new-top-level --name <name> --agent codex --receipt "$RECEIPT" --setup run --json
@@ -222,7 +222,7 @@ To run the worker on another connected Orca server, add `--on <saved-environment
 
 ```bash
 # Mac Run home -> Windows worker (the reverse is identical from a Windows Run home)
-RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --json | jq -c '.receipt')
+RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --json | jq -c '.result.receipt')
 orca orchestration worker-start --task <task_id> --on windows --worktree new-top-level --repo <exact_remote_repo_selector> --name <name> --agent codex --receipt "$RECEIPT" --setup run --json
 orca orchestration worker-show --dispatch <dispatch_id> --json
 orca orchestration worker-read --dispatch <dispatch_id> --limit 50 --json
@@ -343,7 +343,7 @@ Choose the worker location before creating a terminal. `Fresh worker` means a fr
 ```bash
 orca terminal create --worktree active --title <task-name> --command "codex" --json
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
-RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --to <handle> --json | jq -c '.receipt')
+RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --to <handle> --json | jq -c '.result.receipt')
 orca orchestration dispatch --task <task_id> --to <handle> --receipt "$RECEIPT" --inject --json
 ```
 
@@ -358,7 +358,7 @@ orca worktree create --name <task-name> --agent codex --setup run --json
 # or: --agent claude | omp | pi | grok | ...
 # Read <handle> from agentTerminalHandle, falling back to startupTerminal.handle.
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
-RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --to <handle> --json | jq -c '.receipt')
+RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --to <handle> --json | jq -c '.result.receipt')
 orca orchestration dispatch --task <task_id> --to <handle> --receipt "$RECEIPT" --inject --json
 ```
 
@@ -404,7 +404,7 @@ Wait for `tui-idle` before dispatching. Always pass `--timeout-ms`; real coding 
 orca terminal create --worktree active --title login-css-worker --command "claude" --json
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 orca orchestration task-create --spec "Fix the login button CSS" --json
-RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --to <handle> --json | jq -c '.receipt')
+RECEIPT=$(orca orchestration dispatch reserve --task <task_id> --to <handle> --json | jq -c '.result.receipt')
 orca orchestration dispatch --task <task_id> --to <handle> --receipt "$RECEIPT" --inject --json
 orca orchestration check --wait --types worker_done,escalation,question --timeout-ms 900000 --json
 ```

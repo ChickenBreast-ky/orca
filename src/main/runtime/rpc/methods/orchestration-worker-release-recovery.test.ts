@@ -108,11 +108,21 @@ describe('orchestration worker release recovery', () => {
     return method.handler(parsed, ctx)
   }
 
+  async function reserveWorkerReceipt(taskId: string): Promise<string> {
+    const reserved = (await call('orchestration.dispatchReserve', {
+      task: taskId,
+      run: activeRunId,
+      from: 'term_coord'
+    })) as { receipt: unknown }
+    return JSON.stringify(reserved.receipt)
+  }
+
   async function startWorker(): Promise<{ taskId: string; dispatchId: string }> {
     const task = db.createTask({ spec: 'release recovery fixture task', runId: activeRunId })
     const result = (await call('orchestration.workerStart', {
       task: task.id,
       from: 'term_coord',
+      receipt: await reserveWorkerReceipt(task.id),
       agent: 'codex'
     })) as { dispatchId: string; state: string }
     expect(result.state).toBe('ready')

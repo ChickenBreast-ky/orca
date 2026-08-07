@@ -119,6 +119,15 @@ describe('orchestration worker release', () => {
     return method.handler(parsed, ctx)
   }
 
+  async function reserveWorkerReceipt(taskId: string): Promise<string> {
+    const reserved = (await call('orchestration.dispatchReserve', {
+      task: taskId,
+      run: activeRunId,
+      from: 'term_coord'
+    })) as { receipt: unknown }
+    return JSON.stringify(reserved.receipt)
+  }
+
   async function startWorker(options: { terminal?: string } = {}): Promise<{
     taskId: string
     dispatchId: string
@@ -127,6 +136,7 @@ describe('orchestration worker release', () => {
     const result = (await call('orchestration.workerStart', {
       task: task.id,
       from: 'term_coord',
+      receipt: await reserveWorkerReceipt(task.id),
       ...(options.terminal ? { terminal: options.terminal } : { agent: 'codex' })
     })) as { dispatchId: string; state: string }
     expect(result.state).toBe('ready')
@@ -641,6 +651,7 @@ describe('orchestration worker release', () => {
     const attempted = (await call('orchestration.workerStart', {
       task: nextTask.id,
       from: 'term_coord',
+      receipt: await reserveWorkerReceipt(nextTask.id),
       terminal: 'term_worker'
     })) as { state: string; lastError?: string }
 

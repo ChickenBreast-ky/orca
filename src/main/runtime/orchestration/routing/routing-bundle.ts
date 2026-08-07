@@ -15,7 +15,7 @@ export const ROUTING_PROVIDERS_PIN = {
   repo: 'kyle-agent-skills',
   repoCommitSha: '42df425c366e4d3712a7aba08e353a0809fd9959',
   // SHA-256 of the vendored file content (what loadRoutingProvidersBundle verifies at runtime).
-  blobSha: '6358e7a7f8584e41b6dcc5f99439c9700c25fe61797a0f1e3284b2d3e85628f3',
+  blobSha: 'dce34df66420c0aca3b3165b7faec5c6359cd99c5a307a7a6d38d1df8ffe1b05',
   // git hash-object (SHA-1 blob) at that commit, kept as provenance metadata only.
   gitBlobSha: '4b0acf12679cf8314e4a600690d0c4d765664d09',
   relativePath: 'skills/orca-conductor/references/routing-providers.json'

@@ -82,7 +82,7 @@ describe('orchestration RPC methods', () => {
         scopedParams.run ??= activeRunId
       } else if (name === 'orchestration.dispatch') {
         scopedParams.run ??= activeRunId
-       scopedParams.from ??= 'term_coord'
+        scopedParams.from ??= 'term_coord'
       } else if (
         name === 'orchestration.gateCreate' ||
         name === 'orchestration.gateResolve' ||
@@ -92,8 +92,8 @@ describe('orchestration RPC methods', () => {
         scopedParams.from ??= 'term_coord'
       } else if (name === 'orchestration.dispatchReserve') {
         scopedParams.run ??= activeRunId
-       scopedParams.from ??= 'term_coord'
-     }
+        scopedParams.from ??= 'term_coord'
+      }
     }
     const parsed = method.params ? method.params.parse(scopedParams) : undefined
     return method.handler(parsed, ctx)
@@ -110,14 +110,14 @@ describe('orchestration RPC methods', () => {
   }
 
   it('registers all expected methods', () => {
-   const registry = buildRegistry(ORCHESTRATION_METHODS)
+    const registry = buildRegistry(ORCHESTRATION_METHODS)
     expect(registry.size).toBe(39)
     expect(registry.has('orchestration.workerRelease')).toBe(true)
     expect(registry.has('orchestration.workerRetain')).toBe(true)
     expect(registry.has('orchestration.workerList')).toBe(true)
     expect(registry.has('orchestration.workerTerminalUserInput')).toBe(true)
     expect(registry.has('orchestration.dispatchReserve')).toBe(true)
-   expect(registry.has('orchestration.runCreate')).toBe(true)
+    expect(registry.has('orchestration.runCreate')).toBe(true)
     expect(registry.has('orchestration.runUse')).toBe(true)
     expect(registry.has('orchestration.runCurrent')).toBe(true)
     expect(registry.has('orchestration.runList')).toBe(true)
@@ -2247,7 +2247,8 @@ describe('orchestration RPC methods', () => {
       await call('orchestration.workerStart', {
         task: task.id,
         from: 'term_coord',
-        agent: 'cursor'
+        agent: 'cursor',
+        receipt: await reserveWorkerReceipt(task.id)
       })
 
       expect(runtime.createTerminal).toHaveBeenCalledWith(

@@ -599,7 +599,8 @@ export class OrchestrationDb {
     // Why: role_roster is created only by the v23 migration block so the
     // migration test genuinely exercises it; fresh DBs run migrate right after
     // createTables in the constructor, and user_version reaches 23 atomically
-    // only after the table exists.    this.createUndeliveredInboxIndexIfPossible()
+    // only after the table exists.
+    this.createUndeliveredInboxIndexIfPossible()
   }
 
   // Why: CREATE TABLE IF NOT EXISTS won't alter existing DBs; migrate in a txn that bumps user_version only on success (atomic all-or-nothing).

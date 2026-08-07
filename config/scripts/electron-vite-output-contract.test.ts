@@ -174,7 +174,7 @@ describe('Electron Vite output contract', () => {
       )
       expect(String(emittedAssets[0].source)).toBe(sourceContent)
       const sha = createHash('sha256').update(sourceContent, 'utf8').digest('hex')
-      expect(sha).toBe('6358e7a7f8584e41b6dcc5f99439c9700c25fe61797a0f1e3284b2d3e85628f3')
+      expect(sha).toBe('dce34df66420c0aca3b3165b7faec5c6359cd99c5a307a7a6d38d1df8ffe1b05')
     } finally {
       process.chdir(originalCwd)
     }
@@ -187,7 +187,7 @@ describe('Electron Vite output contract', () => {
     )
     const sha = createHash('sha256').update(sourceContent, 'utf8').digest('hex')
     // Why: ROUTING_PROVIDERS_PIN.blobSha in routing-bundle.ts pins this exact hash.
-    expect(sha).toBe('6358e7a7f8584e41b6dcc5f99439c9700c25fe61797a0f1e3284b2d3e85628f3')
+    expect(sha).toBe('dce34df66420c0aca3b3165b7faec5c6359cd99c5a307a7a6d38d1df8ffe1b05')
   })
 
   it('exits when a static import fails before source error guards load', () => {
