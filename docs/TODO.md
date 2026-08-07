@@ -205,3 +205,18 @@
 - 이미 발령된 카드는 수정 대상이 아니다. 그건 발령 교체로 처리한다.
 
 **참고**: 자체 장부(conductor-core)로 옮길 때 같은 구멍을 재현하지 않도록 그쪽 후속 작업에도 기록했다.
+
+## 정상 상태의 발령인데 worker_done이 dispatch_capability_invalid로 거부된다
+
+**Why**: 2026-08-07 판 conductor-hardening-1에서 `task_54ebe4dacc2a` / `ctx_63f6c761ce95`의 최종 `worker_done` 보고가 `dispatch_capability_invalid`로 거부됐다. 그런데 같은 시점 `dispatch-show`는 그 발령을 정상으로 보고했다. 상태는 `dispatched`, `capability_revoked_at`은 `null`, `failure_count`는 0이었다. 즉 조회로는 멀쩡한 발령인데 그 발령으로 완료 보고를 할 수 없었다. 감독은 우회 장치를 만들지 않고 공개 CLI로 카드를 실패 정산한 뒤 상신했다.
+
+**왜 중요한가**: 작업자가 일을 끝내고도 완료를 보고할 수 없으면, 판은 결과를 잃거나 중복 발령으로 되돌아간다. 그리고 조회 결과와 실제 수용 여부가 어긋나므로 감독이 원인을 진단할 수 없다.
+
+**필요한 것**
+- 거부 사유를 조회 가능한 상태와 일치시킨다. `dispatch-show`가 정상이라고 답한 발령은 완료 보고를 수용해야 하고, 수용하지 못한다면 그 이유가 조회에도 드러나야 한다.
+- 거부할 때 어떤 조건이 깨졌는지 응답에 명시한다. 지금은 `dispatch_capability_invalid` 한 단어뿐이라 감독이 다음 행동을 정할 수 없다.
+- 회귀 시험: 정상 발령의 완료 보고 수용, 실제로 권한이 회수된 발령의 거부, 그리고 두 경우가 조회 결과와 일치하는지.
+
+**금지**: 우회 장치를 만들지 않는다. 이 결함은 장부를 우리 것으로 옮기면 우리 계약으로 다시 정의된다.
+
+**증거**: `kyle-agent-skills/.orca/evidence/conductor-hardening-1/task_shadow_live_ab/` 아래 진단 보고.
