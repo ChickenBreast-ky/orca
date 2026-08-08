@@ -232,3 +232,27 @@
 - 판 conductor-hardening-1은 마감하면서 49개를 정산했지만 **12개는 공식 `worker_done` 결속이 없어 정산할 수 없었다.** DB 직접 수정은 금지라 보존만 하고 넘어갔다. 즉 규칙을 지켜도 누수가 남는 경로가 있다.
 
 필요한 것: 판 마감 시 남은 active 신분을 **집계해서 보여주는 수단**, 그리고 `worker_done` 결속이 없는 신분을 안전하게 정산하는 공식 동사. 계약 쪽 정의는 `conductor-core/docs/TODO.md` 5-3에 있다.
+
+## cross-Run 편지의 dispatch 식별자 검증이 fail-open이다 (2026-08-09 시험 3회로 확정)
+
+판 mailbox-relay-1이 슈퍼 Run으로 상위 보고를 보내려다 발견하고, 슈퍼 요청으로 3회 시험해 확정했다.
+
+**증상**: 자기 판의 **실재하는** dispatch id를 `--payload` JSON의 `dispatchId` 키에 담아 다른 Run(슈퍼 우편함)으로 보내면 `dispatch_run_mismatch`로 거부된다. `--task-id`/`--dispatch-id` 플래그만 검증하는 것이 아니라 payload JSON 안의 값도 검증한다.
+
+**시험 결과**
+
+| 시험 | payload 내용 | 결과 |
+|---|---|---|
+| 1 | `taskId`(실재) + `dispatchId`(가짜 `ctx_placeholder_b1`) | **통과** |
+| 2 | `taskId`(실재) + `dispatchId`(실재, 남의 Run) | **거부** |
+| 3 | `taskId`(실재)만 | **통과** |
+
+**왜 문제인가**
+
+1. **검증이 fail-open이다.** 존재하지 않는 가짜 식별자는 통과하고, 실재하는 올바른 식별자만 막힌다. **올바른 데이터가 잘못된 데이터보다 더 엄격하게 막힌다.** 이 상태에서는 "거부되지 않았다"가 "식별자가 유효하다"의 근거가 되지 못한다. 편지에 실린 dispatch 식별자를 아무도 믿을 수 없게 된다.
+2. **상위 보고 표준을 구조적으로 막는다.** 우리 보고 형식은 `taskId, dispatchId`를 payload에 담게 돼 있는데, 그 형식대로 보내면 거부된다. 판은 어쩔 수 없이 `boardDispatchId` 같은 다른 키로 우회하고, 그 결과 판마다 키 이름이 갈라진다. 슈퍼 쪽 소비자는 어느 키를 봐야 할지 모른다.
+3. `taskId`는 검증되지 않는데 `dispatchId`만 검증되는 비대칭도 근거가 불분명하다.
+
+**필요한 것**: 편지 payload는 참조 데이터이지 실행 지시가 아니다. 다른 Run의 식별자를 **참조로 싣는 것 자체는 허용**하고, 실행 권한이 필요한 자리에서만 소속을 검증해야 한다. 그게 어렵다면 최소한 가짜 식별자도 같은 기준으로 막아 fail-closed로 만들어야 한다. 지금은 둘 다 아니다.
+
+슈퍼 쪽 임시 규약은 `super-conductor/references/board-opening-standard.md`의 "통신·보고 계약"에 기록했다.
