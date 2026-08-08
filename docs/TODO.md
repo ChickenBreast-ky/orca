@@ -220,3 +220,15 @@
 **금지**: 우회 장치를 만들지 않는다. 이 결함은 장부를 우리 것으로 옮기면 우리 계약으로 다시 정의된다.
 
 **증거**: `kyle-agent-skills/.orca/evidence/conductor-hardening-1/task_shadow_live_ab/` 아래 진단 보고.
+
+## 판 마감 때 신분 정산이 강제되지 않는다 (2026-08-09 실측)
+
+`roster list`에 **닫힌 판의 `active` 신분이 대량으로 남아 있다.** 실측된 판만 해도 roster-followup, upstream-sync-1, improvement-1, receipt-hardening-1, conductor-core-spike-1, orca-integration-1, rottie-master-integration-1이다. 판은 마감됐는데 신분은 살아 있는 것으로 조회된다.
+
+왜 문제인가: 다음 작업이 **옛 handle을 현재 신분으로 잘못 쓸 수 있다.** `retired`가 active 후보 해석에서 제외되는 설계의 이점이 통째로 사라진다. 실제로 같은 role로 새 pane을 등록하려다 `role_roster_conflict`로 거부되는 사고가 이미 났다.
+
+- 판 마감이 그 판의 신분 정산을 **강제하지 않는다.** 감독이 정산을 잊거나 비정상 종료하면 그대로 남는다.
+- 정산이 안 된 신분을 사후에 찾아내는 수단이 없다. `cleanupCandidate` 필드가 있으나 이 경우들에는 붙지 않았다.
+- 판 conductor-hardening-1은 마감하면서 49개를 정산했지만 **12개는 공식 `worker_done` 결속이 없어 정산할 수 없었다.** DB 직접 수정은 금지라 보존만 하고 넘어갔다. 즉 규칙을 지켜도 누수가 남는 경로가 있다.
+
+필요한 것: 판 마감 시 남은 active 신분을 **집계해서 보여주는 수단**, 그리고 `worker_done` 결속이 없는 신분을 안전하게 정산하는 공식 동사. 계약 쪽 정의는 `conductor-core/docs/TODO.md` 5-3에 있다.
