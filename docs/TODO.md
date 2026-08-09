@@ -263,3 +263,28 @@
 **필요한 것**: 편지 payload는 참조 데이터이지 실행 지시가 아니다. 다른 Run의 식별자를 **참조로 싣는 것 자체는 허용**하고, 실행 권한이 필요한 자리에서만 소속을 검증해야 한다. 그게 어렵다면 최소한 가짜 식별자도 같은 기준으로 막아 fail-closed로 만들어야 한다. 지금은 둘 다 아니다.
 
 슈퍼 쪽 임시 규약은 `super-conductor/references/board-opening-standard.md`의 "통신·보고 계약"에 기록했다.
+
+## roster의 상태 필드를 믿을 수 없다 — 쓰기도 읽기도 거짓을 낸다 (2026-08-09 실측)
+
+두 방향 모두에서 확인됐다.
+
+**쓰기 쪽**: `roster retire`가 `ok=true`를 반환하면서 실제로는 `retired=false`로 남는다. 판 mailbox-relay-1이 **3회 관측**했다(검수자 은퇴). 3회면 우연이 아니다.
+
+**읽기 쪽**: `roster list`의 `live` 필드가 실제 연결 상태와 다르다. 슈퍼 실측:
+
+| role | roster `status` | roster `live` | `terminal show`의 `connected` | 실제 프로세스 |
+|---|---|---|---|---|
+| `worker-a1` | **active** | **True** | **False** | 없음 |
+| `worker-a2` | **active** | **True** | **False** | 없음 |
+
+판 conductor-core-contract-1은 이 둘을 `terminal close --terminal`로 **정상적으로 닫았다고 보고했고 그 보고가 맞다.** 프로세스도 없고 `connected`도 `False`다. 그런데 roster는 여전히 `active`·`live=True`이고 `cleanupCandidate=False`다.
+
+**왜 심각한가**
+
+1. **동시 실행 상한 계산이 틀어진다.** 두 판은 anthropic 동시 작업자 1명 상한을 roster/장부 기준으로 센다. 죽은 작업자가 live로 남으면 실제보다 많이 세어 발령을 못 하거나, 반대로 신분 충돌이 난다. 같은 날 두 판 합계 **active 34 / retired 12** 인데, 완료된 카드의 `worker-a1`·`reviewer-b1` 같은 것들이 전부 active로 남아 있다.
+2. **`retire`가 성공을 보고하며 실패하므로** 감독이 정산했다고 믿고 넘어간다. 아침에 기록한 "판 마감 때 신분 정산이 강제되지 않는다"는 항목의 **실제 메커니즘이 이것**이다 — 강제되지 않는 것이 아니라 **강제한 결과가 반영되지 않는다.**
+3. `cleanupCandidate`가 이 경우들에 붙지 않으므로 **사후에 찾아낼 수단도 없다.**
+
+**필요한 것**: `live`를 실제 연결 상태(`connected`)에서 파생시키거나, 둘이 어긋날 수 있음을 소비자가 알 수 있게 한다. `retire`는 반영 실패 시 `ok=false`로 실패 닫힘해야 한다. 지금은 두 필드 모두 **신호가 무엇을 보증하는지 알 수 없는 상태**다.
+
+**부수 관찰(슈퍼 자기 오류)**: 슈퍼가 이것을 확인하면서 `terminal show`의 `ok=true`를 살아 있음으로 읽었다. `ok`는 **핸들을 아는가**이지 **연결돼 있는가**가 아니다. `connected` 필드를 봐야 한다. 같은 날 "성공 신호가 무엇에 대한 성공인지 확인하라"를 두 판에 지시한 직후에 슈퍼가 그 규칙을 어겼다.
